@@ -405,6 +405,8 @@ button.sum:hover { background: var(--surface-2); }
 .pop-row.new { background: var(--surface-2); }
 .pop-row time { font: 600 11.5px var(--font-mono); color: var(--muted); padding-top: 2px; }
 .pop-dl .old { color: var(--muted); text-decoration: line-through; }
+.oth-go { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.oth-go:hover { color: var(--accent); text-decoration-style: solid; }
 .pop-trips { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 2px; }
 .pop-trips .q-trip { color: var(--tc, var(--accent)); }
 
@@ -913,6 +915,14 @@ body { font-variant-numeric: tabular-nums; }
 .sbsearch .qbtn { position: absolute; left: 2px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; border: 0; background: none; color: var(--muted); display: grid; place-items: center; padding: 0; z-index: 1; border-radius: 999px; }
 .sbsearch input { width: 100%; height: 32px; min-height: 0; border-radius: 999px; padding: 0 30px 0 32px; font: 500 13.5px var(--font-body); border: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 70%, transparent); color: var(--fg); }
 .sbsearch input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.qhist { position: absolute; top: calc(100% + 6px); left: 0; min-width: 240px; width: 100%; z-index: 30; background: var(--bg); background-image: linear-gradient(var(--surface), var(--surface)); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 28px rgba(0,0,0,.18); padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+.qhist[hidden] { display: none; }
+.qh-cap { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 2px 8px 4px; }
+.qh-row { display: flex; align-items: center; border-radius: 8px; }
+.qh-row:hover { background: var(--surface-2); }
+.qh-go { flex: 1; text-align: left; border: 0; background: none; color: var(--fg); font: 600 13px var(--font-body); padding: 6px 8px; cursor: pointer; }
+.qh-x { border: 0; background: none; color: var(--muted); font-size: 16px; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; }
+.qh-x:hover { color: var(--fg); background: var(--line); }
 .sbsearch input::-webkit-search-cancel-button { cursor: pointer; }
 .sbsearch .qkey { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font: 600 11px var(--font-mono); color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; pointer-events: none; }
 .sbsearch input:focus ~ .qkey, .sbsearch input:not(:placeholder-shown) ~ .qkey { display: none; }
@@ -929,7 +939,8 @@ body { font-variant-numeric: tabular-nums; }
 .tabsrow > .sbsearch.open .qbtn { border-color: transparent; background: none; transform: translateY(-50%); }
 .tabsrow > .sbsearch.open input { opacity: 1; pointer-events: auto; cursor: text; background: var(--bg); }
 @media (max-width: 1099px) { .stickybar > .tabsrow { flex-wrap: wrap; align-items: flex-start; } .tabsrow > nav { flex: 1 1 0; } .tabsrow > .sbsearch.open { width: 100%; } }
-#qres:not(:empty) { margin-top: -4px; }
+/* search results ride along in the sticky bar, scrolling inside it when long */
+.stickybar #qres:not(:empty) { margin: 0; max-height: min(48vh, 460px); overflow-y: auto; overscroll-behavior: contain; padding: 2px 2px 4px; border-top: 1px solid var(--line); padding-top: 8px; }
 
 /* arrivals strip v2: header with switches, shift load, night shading, slack column, phone list */
 .tl-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; }
@@ -1050,6 +1061,185 @@ button.tl-sep:hover b { text-decoration: underline; text-underline-offset: 3px; 
 .ttag.unit { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
 .ttag.st { background: var(--hot-bg); color: var(--hot); }
 .pop-st { color: var(--hot); font-weight: 600; }
+
+/* overview panel */
+.ovbox { display: flex; flex-direction: column; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.ov-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; }
+.ov-head h2 { margin: 0; }
+.ov-shift { font-size: 13px; color: var(--muted); font-weight: 600; }
+.ov-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; }
+.ov-stat { flex: 1 1 150px; min-width: 140px; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--surface-2) 70%, transparent); border: 1px solid var(--line); }
+.ov-stat b { font: 700 30px/1 var(--font-body); font-variant-numeric: tabular-nums; }
+.ov-stat span { font-size: 12px; color: var(--muted); }
+.ov-stat.ok b { color: var(--ok); } .ov-stat.run b { color: var(--accent); }
+.ov-hwrap { flex: 2 1 320px; display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--surface-2) 70%, transparent); border: 1px solid var(--line); }
+.ov-cap { font-size: 11.5px; color: var(--muted); font-weight: 600; letter-spacing: .03em; }
+.ov-fc { font-size: 13px; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); }
+.ov-prev { font-size: 12.5px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+.ov-prev b { color: var(--fg); font-variant-numeric: tabular-nums; }
+.ov-prevl { font-weight: 700; text-transform: uppercase; letter-spacing: .04em; font-size: 11px; margin-right: 6px; }
+.ov-fcnote { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.ov-fc.bad { background: color-mix(in srgb, var(--warn) 16%, transparent); } .ov-fc.bad b { color: var(--warn); }
+.ov-fc.good { background: color-mix(in srgb, var(--ok) 14%, transparent); } .ov-fc.good b { color: var(--ok); }
+.ov-need { position: absolute; left: 0; right: 0; border-top: 2px dashed var(--warn); pointer-events: auto; z-index: 1; }
+.ov-need span { position: absolute; right: 0; top: -17px; font: 700 10.5px var(--font-body); color: var(--warn); background: var(--surface); padding: 0 4px; border-radius: 4px; }
+.ov-hours { position: relative; display: flex; align-items: flex-end; gap: 4px; height: 76px; }
+.ov-hcol { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 2px; position: relative; }
+.ov-hcol i { display: block; width: 100%; max-width: 26px; border-radius: 4px 4px 2px 2px; background: var(--ok); opacity: .85; }
+.ov-hcol.future i { background: var(--line); }
+.ov-hcol em { position: absolute; bottom: 30px; font: 700 11px var(--font-body); font-style: normal; color: var(--fg); }
+.ov-hcol small { font-size: 10px; color: var(--muted); height: 12px; font-variant-numeric: tabular-nums; }
+.ov-plan { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--surface-2) 70%, transparent); border: 1px solid var(--line); }
+.ov-ptop { display: flex; align-items: baseline; gap: 4px 12px; flex-wrap: wrap; }
+.ov-pbig b { font: 700 34px/1 var(--font-body); color: var(--ok); font-variant-numeric: tabular-nums; }
+.ov-pbig span { font: 700 22px/1 var(--font-body); color: var(--muted); font-variant-numeric: tabular-nums; }
+.ov-pcap { font-size: 12px; color: var(--muted); }
+.ov-pnote { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.ov-plan .ov-bar { height: 26px; }
+.ov-note { font-size: 12px; color: var(--muted); }
+.ov-cap2 { margin-top: 2px; }
+.ov-blocks { display: flex; flex-direction: column; gap: 8px; }
+.ov-block { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 12px; align-items: center; }
+.ov-blab { display: flex; flex-direction: column; gap: 1px; }
+.ov-blab b { font-size: 13.5px; } .ov-blab span { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ov-bar { display: flex; height: 22px; border-radius: 999px; overflow: hidden; background: var(--surface-2); }
+.ov-bar .seg { display: flex; align-items: center; justify-content: center; font: 700 11px var(--font-body); font-style: normal; color: #fff; min-width: 4px; }
+.seg.unl { background: var(--ok); } .seg.run { background: var(--accent); color: var(--accent-fg); } .seg.yard { background: color-mix(in srgb, var(--fg) 45%, var(--surface)); }
+.seg.road { background: color-mix(in srgb, var(--fg) 22%, var(--surface)); color: var(--fg); } .seg.none { background: var(--warn); }
+.seg.after { background: color-mix(in srgb, var(--accent) 30%, var(--surface)); color: var(--fg); }
+.seg.later { background: color-mix(in srgb, var(--fg) 10%, var(--surface)); color: var(--fg); }
+.ov-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px 16px; }
+.ov-grp { display: flex; flex-direction: column; gap: 5px; }
+.ov-gh { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.ov-gh .seg { display: inline-block; width: 12px; height: 10px; border-radius: 3px; }
+.ov-gpal { margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ov-trips { display: flex; flex-wrap: wrap; gap: 4px; }
+.ov-trip { font: 600 12px var(--font-body); padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; display: inline-flex; gap: 5px; align-items: baseline; }
+.ov-trip:hover { border-color: var(--accent); }
+.ov-trip small { font-size: 10.5px; color: var(--muted); font-weight: 500; }
+.ov-glegend { font-size: 12.5px; color: var(--fg); } .ov-glegend b { font-variant-numeric: tabular-nums; }
+.ov-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11.5px; color: var(--muted); }
+.ov-legend .seg { display: inline-block; width: 12px; height: 8px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
+@media (max-width: 699px) { .ov-block { grid-template-columns: 1fr; gap: 4px; } .ov-stat b { font-size: 24px; } }
+
+/* an opened trailer glows all round in its terminal colour */
+:root:root .list > li.row.open.open { border-color: color-mix(in srgb, var(--tc, var(--accent)) 75%, transparent); background: linear-gradient(color-mix(in srgb, var(--tc, var(--accent)) 10%, transparent), color-mix(in srgb, var(--tc, var(--accent)) 4%, transparent)), var(--surface); box-shadow: 0 0 0 1px color-mix(in srgb, var(--tc, var(--accent)) 45%, transparent), 0 0 26px -6px color-mix(in srgb, var(--tc, var(--accent)) 60%, transparent); }
+@media (prefers-color-scheme: light) { :root:root:not([data-theme="dark"]) .list > li.row.open.open { border-color: var(--tc, var(--accent)); background: linear-gradient(color-mix(in srgb, var(--tc, var(--accent)) 16%, transparent), color-mix(in srgb, var(--tc, var(--accent)) 7%, transparent)), var(--surface); box-shadow: 0 0 0 2px color-mix(in srgb, var(--tc, var(--accent)) 55%, transparent), 0 0 30px -4px color-mix(in srgb, var(--tc, var(--accent)) 70%, transparent); } }
+:root:root[data-theme="light"] .list > li.row.open.open { border-color: var(--tc, var(--accent)); background: linear-gradient(color-mix(in srgb, var(--tc, var(--accent)) 16%, transparent), color-mix(in srgb, var(--tc, var(--accent)) 7%, transparent)), var(--surface); box-shadow: 0 0 0 2px color-mix(in srgb, var(--tc, var(--accent)) 55%, transparent), 0 0 30px -4px color-mix(in srgb, var(--tc, var(--accent)) 70%, transparent); }
+
+/* expanding-label tabs */
+.stickybar .chip.tabx { flex: none; position: relative; display: inline-flex; align-items: center; gap: 0; padding: 0 11px; min-height: 36px; height: 36px; transition: background-color .3s ease, color .3s ease, padding .38s cubic-bezier(.34, 1.3, .64, 1); }
+.tabx .tx-i { width: 19px; height: 19px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .38s cubic-bezier(.34, 1.5, .64, 1); }
+.tabx .tx-l { display: inline-flex; align-items: baseline; overflow: hidden; white-space: nowrap; max-width: 0; opacity: 0; margin-left: 0; transition: max-width .42s cubic-bezier(.34, 1.15, .64, 1), opacity .25s ease, margin-left .42s ease; }
+.tabx .tx-n:empty { display: none; }
+.tabx[aria-pressed="true"] { padding: 0 16px 0 13px; }
+.tabx[aria-pressed="true"] .tx-l { max-width: 240px; opacity: 1; margin-left: 8px; transition: max-width .42s cubic-bezier(.34, 1.15, .64, 1), opacity .3s ease .08s, margin-left .42s ease; }
+.tabx[aria-pressed="true"] .tx-i { transform: scale(1.08); }
+.tabx:not([aria-pressed="true"]):hover .tx-i { transform: translateY(-1px) scale(1.1); }
+.tabx .tx-badge { margin-left: 5px; min-width: 16px; height: 18px; padding: 0 5px; border-radius: 999px; font: 700 11px/18px var(--font-body); text-align: center; background: color-mix(in srgb, var(--fg) 14%, transparent); color: inherit; font-variant-numeric: tabular-nums; max-width: 40px; overflow: hidden; transition: max-width .35s ease, opacity .25s ease, margin-left .35s ease, padding .35s ease; }
+.tabx .tx-badge[hidden] { display: inline-block; max-width: 0; opacity: 0; margin-left: 0; padding: 0; min-width: 0; }
+.tabx .tx-badge.hot { background: var(--hot); color: #fff; }
+.tabx.warn:not([aria-pressed="true"]) { color: var(--hot); }
+#tabs { gap: 6px; flex-wrap: nowrap; }
+.tabx .tx-ls { display: none; }
+@media (max-width: 520px) {
+  .tabx .tx-lt { display: none; } .tabx .tx-ls { display: inline; }
+  .stickybar .chip.tabx { padding: 0 8px; font-size: 13px; }
+  .tabx[aria-pressed="true"] { padding: 0 11px 0 10px; }
+  .tabx[aria-pressed="true"] .tx-l { margin-left: 6px; }
+  .tabx .tx-i { width: 18px; height: 18px; }
+  .tabx .tx-badge { margin-left: 4px; padding: 0 4px; font-size: 10.5px; }
+  #tabs { overflow-x: auto; scrollbar-width: none; gap: 4px; }
+  .tabx .tx-n { display: none; }
+  .stickybar { padding-left: 8px; padding-right: 8px; }
+  .stickybar > .tabsrow { gap: 6px; }
+}
+@media (prefers-reduced-motion: reduce) { .tabx, .tabx .tx-l, .tabx .tx-i, .tabx .tx-badge { transition: none !important; } }
+
+/* compact attention badges in the sticky bar */
+.stickybar .sum.mini { height: 26px; padding: 0 9px 0 6px; gap: 5px; font-size: 12.5px; transition: padding .3s ease; }
+.sum.mini .sm-i { width: 16px; height: 16px; border-radius: 999px; display: inline-grid; place-items: center; font: 800 10px/1 var(--font-body); font-style: normal; color: var(--bg); background: var(--warn); }
+.sum.mini.hot .sm-i { background: var(--hot); }
+.sum.mini b { font-size: 12.5px; opacity: 1; }
+.sum.mini .sm-t { max-width: 0; opacity: 0; overflow: hidden; white-space: nowrap; transition: max-width .35s cubic-bezier(.34, 1.15, .64, 1), opacity .2s ease; }
+.sum.mini:hover .sm-t, .sum.mini:focus-visible .sm-t { max-width: 260px; opacity: 1; }
+@media (hover: none) { .sum.mini .sm-t { max-width: 260px; opacity: 1; } }
+
+/* the search field stays open: nothing around it moves */
+.stickybar > .tabsrow > .sbsearch, .stickybar > .tabsrow > .sbsearch.open { width: 240px; transition: none; }
+.tabsrow > .sbsearch .qbtn, .tabsrow > .sbsearch.open .qbtn { border-color: transparent; background: none; transform: translateY(-50%); cursor: default; }
+@media (max-width: 1099px) { .stickybar > .tabsrow > .sbsearch, .stickybar > .tabsrow > .sbsearch.open { width: 100%; flex: 1 1 100%; } }
+
+/* floating-notch tab bar */
+#tabs.notchbar { position: relative; flex-wrap: nowrap; gap: 2px; padding: 14px 4px 3px; isolation: isolate; }
+#tabs.notchbar::before { content: ""; position: absolute; left: 0; right: 0; top: 11px; bottom: 0; z-index: -1; border-radius: 999px; background: color-mix(in srgb, var(--fg) 8%, transparent); border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  -webkit-mask: radial-gradient(circle 21px at var(--nx, -50px) 6px, transparent 20px, #000 21px); mask: radial-gradient(circle 21px at var(--nx, -50px) 6px, transparent 20px, #000 21px); }
+#tabs.notchbar .chip.tabx, #tabs.notchbar .chip.tabx[aria-pressed="true"] { background: transparent; border-color: transparent; box-shadow: none; }
+#tabs.notchbar .chip.tabx::before, #tabs.notchbar .chip.tabx::after { display: none; }
+#tabs.notchbar .tabx[aria-pressed="true"] { color: var(--accent); }
+#tabs.notchbar .tabx[aria-pressed="true"] .tx-i { visibility: hidden; }
+#tabs.notchbar .tabx:not([aria-pressed="true"]):hover { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.nball { position: absolute; left: 0; top: 0; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--accent-fg, #fff); box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--accent) 70%, transparent), 0 0 0 3px color-mix(in srgb, var(--bg) 60%, transparent); pointer-events: none; z-index: 2; will-change: transform; }
+.nball .tx-i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+@media (min-width: 1100px) { .stickybar > .tabsrow { align-items: flex-end; } }
+
+/* notch tabs v2: equal-width tabs, icon in the middle, the name shows under the ball only for the active tab - nothing changes width */
+#tabs.notchbar { gap: 0; padding: 14px 6px 2px; }
+#tabs.notchbar .chip.tabx, #tabs.notchbar .chip.tabx[aria-pressed="true"] { width: 76px; height: 44px; padding: 0; display: block; position: relative; overflow: visible; transition: color .3s ease; }
+#tabs.notchbar .tabx .tx-i { position: absolute; left: 50%; top: 50%; margin: -9px 0 0 -9px; width: 18px; height: 18px; transform: none; transition: opacity .2s ease, transform .3s cubic-bezier(.34, 1.5, .64, 1); }
+#tabs.notchbar .tabx:not([aria-pressed="true"]):hover .tx-i { transform: translateY(-2px) scale(1.1); }
+#tabs.notchbar .tabx[aria-pressed="true"] .tx-i { visibility: visible; opacity: 0; transform: translateY(-10px) scale(.6); }
+#tabs.notchbar .tabx .tx-l { position: absolute; left: 0; right: 0; bottom: 4px; margin: 0; max-width: none; display: block; text-align: center; font-size: 11px; font-weight: 700; opacity: 0; transform: translateY(4px); transition: opacity .25s ease, transform .35s cubic-bezier(.34, 1.4, .64, 1); }
+#tabs.notchbar .tabx .tx-lt, #tabs.notchbar .tabx .tx-n { display: none; }
+#tabs.notchbar .tabx .tx-ls { display: inline; }
+#tabs.notchbar .tabx[aria-pressed="true"] .tx-l { opacity: 1; transform: none; transition-delay: .15s; }
+#tabs.notchbar .tabx .tx-badge { position: absolute; top: 4px; left: calc(50% + 5px); margin: 0; height: 16px; min-width: 16px; padding: 0 4px; font-size: 10px; line-height: 16px; }
+#tabs.notchbar .tabx[aria-pressed="true"] .tx-badge { display: none; }
+#tabs.notchbar .tabx:not([aria-pressed="true"]):hover { background: transparent; }
+@media (max-width: 520px) { #tabs.notchbar .chip.tabx, #tabs.notchbar .chip.tabx[aria-pressed="true"] { width: 68px; } }
+
+/* narrower screens: search and the tab bar share one row; on phones the bar takes the full width with tabs spread evenly */
+@media (max-width: 1099px) {
+  .stickybar > .tabsrow { flex-wrap: nowrap; align-items: flex-end; }
+  .stickybar > .tabsrow > .sbsearch, .stickybar > .tabsrow > .sbsearch.open { width: auto; flex: 1 1 auto; margin-bottom: 7px; }
+  .stickybar > .tabsrow > #tabs.notchbar { flex: none; }
+}
+@media (max-width: 699px) {
+  .stickybar > .tabsrow { flex-wrap: wrap; }
+  .stickybar > .tabsrow > .sbsearch, .stickybar > .tabsrow > .sbsearch.open { flex: 1 1 100%; margin-bottom: 0; }
+  .stickybar > .tabsrow > #tabs.notchbar { flex: 1 1 100%; }
+  #tabs.notchbar .chip.tabx, #tabs.notchbar .chip.tabx[aria-pressed="true"] { flex: 1 1 0; width: auto; min-width: 0; }
+}
+
+/* compact overview */
+.ov-anbtn { margin-left: auto; border: 1px solid var(--line); background: none; color: var(--muted); font: 600 12.5px var(--font-body); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+.ov-anbtn:hover, .ov-anbtn[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+.ov-head { align-items: center; }
+.ov-main { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 22px; align-items: center; }
+.ov-kpi { display: flex; flex-direction: column; gap: 2px; }
+.ov-ksub { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ov-pct { color: var(--fg); font-weight: 700; }
+.ov-right { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ov-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ov-ch { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface-2) 60%, transparent); color: var(--fg); border-radius: 999px; padding: 3px 10px 3px 8px; font: 500 12.5px var(--font-body); cursor: pointer; font-variant-numeric: tabular-nums; }
+.ov-ch .seg { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+.ov-ch:hover:not(:disabled), .ov-ch.on { border-color: var(--accent); }
+.ov-ch.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.ov-ch:disabled { opacity: .55; cursor: default; }
+.ov-pick { display: flex; flex-wrap: wrap; gap: 5px; padding: 8px; border-radius: 10px; background: color-mix(in srgb, var(--surface-2) 55%, transparent); border: 1px dashed var(--line); }
+.ov-an { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+.ov-params { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; font-size: 12.5px; color: var(--muted); }
+.ov-crew { display: inline-flex; align-items: center; gap: 6px; color: var(--fg); }
+.ov-crew b { min-width: 18px; text-align: center; font-size: 14px; font-variant-numeric: tabular-nums; }
+.ov-crew small { color: var(--muted); }
+.ov-cb { width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: 700 15px/1 var(--font-body); cursor: pointer; }
+.ov-cb:hover { border-color: var(--accent); color: var(--accent); }
+.ov-cr { border: 0; background: none; color: var(--accent); font: 600 12px var(--font-body); cursor: pointer; text-decoration: underline; }
+.ov-stat.out b { color: var(--accent); }
+.ov-out { font-size: 12.5px; color: var(--muted); }
+@media (max-width: 699px) { .ov-main { grid-template-columns: 1fr; } }
+
+.hotpill { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: var(--hot); color: #fff; font: 800 11px/1.5 var(--font-body); letter-spacing: .04em; vertical-align: 2px; }
 </style>
 </head>
 <body>
@@ -1072,10 +1262,11 @@ button.tl-sep:hover b { text-decoration: underline; text-underline-offset: 3px; 
   <div id="alert"></div>
   <div class="stickybar">
   <div class="tabrow tabsrow">
-    <div class="sbsearch" id="sbSearch">
+    <div class="sbsearch open" id="sbSearch">
       <button class="qbtn" id="qbtn" type="button" aria-label="Пошук" title="Пошук (клавіша /)"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12.6 12.6L17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
       <input id="q" type="search" placeholder="G-номер, трейлер, трак" autocomplete="off" aria-label="Пошук вантажу або трейлера">
       <kbd class="qkey" aria-hidden="true">/</kbd>
+      <div class="qhist" id="qhist" hidden></div>
     </div>
     <nav class="chips" id="tabs" aria-label="Розділи"></nav>
   </div>
@@ -1083,8 +1274,8 @@ button.tl-sep:hover b { text-decoration: underline; text-underline-offset: 3px; 
     <nav class="chips" id="days" aria-label="Фільтр за терміналом"></nav>
     <div class="sumline" id="stats" aria-label="Що потребує уваги"></div>
   </div>
-  </div>
   <div id="qres"></div>
+  </div>
   <div id="viewUnload" style="display:flex;flex-direction:column;gap:20px">
   <details id="logBox" hidden>
     <summary id="logSum" style="cursor:pointer;display:flex;align-items:center;gap:8px;min-height:44px"></summary>
@@ -1095,6 +1286,7 @@ button.tl-sep:hover b { text-decoration: underline; text-underline-offset: 3px; 
     <ol class="spot-list" id="spotList"></ol>
     <div class="spot-note" id="spotNote"></div>
   </section>
+  <section class="ovbox" id="ovBox" hidden></section>
   <section class="tlbox" id="tlBox" hidden>
     <div class="tl-head"><h2 id="tlTitle">Прибуття на найближчі 48 год</h2>
       <div class="tl-ctrl" id="tlCtrl">
@@ -1273,7 +1465,13 @@ function parseBoard(XLSX, wb) {
       return { s: at(sh, sm), e: at(eh, em) };
     }
     r = s.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/);
-    if (!r) return null;
+    if (!r) {
+      /* a part of the day instead of a time: "SUN Afternoon" */
+      var w = s.match(/\b(EARLY MORNING|MORNING|NOON|MIDDAY|AFTERNOON|EVENING|NIGHT|TONIGHT|EOD|END OF DAY)\b/);
+      if (!w) return null;
+      var span = { 'EARLY MORNING': [3, 7], MORNING: [6, 12], NOON: [11, 13], MIDDAY: [11, 13], AFTERNOON: [12, 17], EVENING: [17, 21], NIGHT: [20, 24], TONIGHT: [20, 24], EOD: [16, 20], 'END OF DAY': [16, 20] }[w[1]];
+      return { s: at(span[0], 0), e: at(span[1], 0) - (span[1] === 24 ? 60000 : 0) };
+    }
     var h = parseInt(r[1], 10) % 12 + (r[3] === 'PM' ? 12 : 0), m = r[2] ? parseInt(r[2], 10) : 0;
     return { s: at(h, m), e: at(h, m) };
   }
@@ -1359,6 +1557,9 @@ function parseBoard(XLSX, wb) {
         var abn = str(r[27]);
         note.forEach(function (n) { if (HOT.test(n)) { g.hot = true; if (!g.hotReason) g.hotReason = n; } if (g.notes.indexOf(n) < 0) g.notes.push(n); });
         if (abn && HOT.test(abn)) { g.hot = true; if (!g.hotReason) g.hotReason = abn; }
+        /* a separate row right above the load with "HOT" typed across it (3+ cells) marks this load as HOT */
+        var hotRow = pro && (rows[i - 1] || []).filter(function (c) { return /^\s*HOT\s*$/i.test(str(c)); }).length >= 3;
+        if (hotRow) { g.hot = true; if (!g.hotReason) g.hotReason = pro + ': HOT (рядок-позначка над вантажем)'; }
         if (pro) {
           var nxt = rows[i + 1] || [];
           var dl = r[3];
@@ -1371,6 +1572,7 @@ function parseBoard(XLSX, wb) {
           var dv = parseDeliver(r[18], nxt[18], blk.date);
           var sh = {
             pro: pro,
+            hot: hotRow,
             sheet: name,
             row: i + 1,
             customer: str(r[14]),
@@ -1434,7 +1636,7 @@ function parseBoard(XLSX, wb) {
 
 /* Language: Ukrainian by default, English when chosen (remembered in this browser). Every UI text goes through yqT(); board data is never translated. */
 var YQ_LANG = (function () { try { return localStorage.getItem('yq_lang') === 'en' ? 'en' : 'uk'; } catch (e) { return 'uk'; } })();
-var YQ_EN = {"Нд": "Sun", "Пн": "Mon", "Вт": "Tue", "Ср": "Wed", "Чт": "Thu", "Пт": "Fri", "Сб": "Sat", " хв": " min", " год": "h", " д ": "d ", "⬆ NOSE · до кабіни": "⬆ NOSE · to the cab", "⬇ TAIL · до дверей": "⬇ TAIL · to the doors", "↔ MIDDLE · посередині": "↔ MIDDLE · in the middle", ": примітка «": ": note «", "не вказано": "not set", "розвантажено": "unloaded", "стан не вказано": "status not set", "нема на борді": "not on the board", "на ярді": "on yard", "розвантажується": "unloading", "їде, ": "en route, ", "ETA не вказано": "ETA not set", "Запізнюємось: розвантаження треба було почати ": "Running late: unloading should have started ", " тому": " ago", "Samsara: трак буде ": "Samsara: truck will be at ", ", а почати треба до ": ", but unloading must start by ", "ETA минув ": "ETA passed ", " тому, YARD на борді немає": " ago, no YARD on the board", "PN: до початку розвантаження менше ": "PN: less than ", " год, а контейнер ще на колії": "h until unloading must start, and the container is still on the rail", "Нова примітка: ": "New note: ", "Дедлайн змінено: ": "Deadline changed: ", "На борді немає Unit ETA / Deramp": "No Unit ETA / Deramp on the board", "За бордою трейлер приїде пізно (до ": "By the board the trailer arrives late (until ", "), але Samsara показує ": "), but Samsara shows ", ": встигаємо, якщо трак не зупиниться надовго": ": on time if the truck does not stop for long", "За бордою трейлер приїде пізно: ETA до ": "By the board the trailer arrives late: ETA until ", ": на борді ": ": on the board ", " з ": " of ", " пал., не вистачає ": " pal., missing ", " пал. при Total ": " pal. with Total ", ", забагато на ": ", too many by ", " чекає частину: ": " waits for a part: ", " пал., ": " pal., ", "Трейлер": "Trailer", "Трак": "Truck", "вантаж": "load", "вантажі": "loads", " пал.": " pal.", " (завантажено ": " (loaded ", "Завант.": "Load days", "✅ Док ": "✅ Dock ", "🚚 Поставити": "🚚 Spot", "Стан": "Status", "✓ Усе завантажено": "✓ All loaded", "Виїхати до": "Depart by", "запізнення ": "late ", "через ": "in ", "Почати до": "Start by", "Без часу": "No time", "день ": "day ", "Вручну: ": "Manual: ", "Samsara без пауз: ": "Samsara, no stops: ", "щойно": "just now", " (застаріло)": " (stale)", "Розвантажується": "Unloading", "ETA було ": "ETA was ", "На ярді": "On yard", "ETA прибуття": "ETA arrival", "контейнер ще на колії": "container still on the rail", "як на борді": "as on the board", "орієнтовно": "approx.", "за ": "by ", "дедлайн від диспетчера": "dispatcher deadline", " · за ": " · by ", " · доставка ": " · delivery ", "Доставка": "Delivery", "✓ Добирає останню частину: ": "✓ Completes the last part: ", "У цьому трейлері на борді поки немає рядків з PRO#.": "No rows with a PRO# in this trailer on the board yet.", ": показати або сховати вантажі": ": show or hide loads", "сховати ⌃": "hide ⌃", "вантажі ⌄": "loads ⌄", "Завантажено": "Loaded", "завантажив ": "loaded by ", " · збирається повністю": " · comes together in full", " · цілий": " · complete", "Куди": "To", "Забагато палет": "Too many pallets", " при Total ": " with Total ", "Не на борді": "Not on the board", " пал. (є ": " pal. (have ", "Водій": "Driver", " · час орієнтовний": " · time is approximate", "доставка в Markham: час трейлера не задає": "delivery to Markham: does not set the trailer time", "дата доставки раніша за день завантаження: час не рахую, перевір борду": "delivery date is before the loading day: time not counted, check the board", "✓ остання частина": "✓ last part", " · Storage не вказано": " · Storage not set", "у трейлер ": "into trailer ", "завантажується": "loading", "без статусу": "no status", "PENDING · на доці, розписаний": "PENDING · at the dock, scheduled", "IN LINE · підготовлений до роботи": "IN LINE · ready to work", "LOADING · завантажується": "LOADING · loading", "Розвантаження": "Unloading", "До відвантаження": "Outbound", "Перевірка борди": "Board check", "нових ": "new ", "Зараз немає розібраних вантажів з дедлайном, що чекають відвантаження.": "No sorted loads with a deadline waiting to ship right now.", "НОВЕ": "NEW", "доставка ": "delivery ", "розібрано з: ": "sorted from: ", "дедлайн: до ": "deadline: by ", "за Must be ready": "by Must be ready", "за доставкою": "by delivery", "аркуш «": "sheet «", ", рядок ": ", row ", ": у рядку вантажу порожній Trip#": ": empty Trip# in the load row", "Немає Unit ETA / Deramp: невідомо, де трейлер": "No Unit ETA / Deramp: trailer location unknown", " минув, а YARD не відмічено": " passed, but YARD is not marked", "» не вдалося прочитати як час": "» could not be read as a time", ". Можливо, не внесено трейлер з рештою": ". The trailer with the rest may not be entered", ": рядок з ": ": row with ", " пал. без Trip#": " pal. without Trip#", ": рядок «TRIP EMPTY» має ": ": row «TRIP EMPTY» has ", ": номер трейлера ": ": trailer number ", " стоїть у колонці Must be ready by, а не в Unit number": " is in the Must be ready by column, not in Unit number", ": доставка ": ": delivery ", " раніша за день завантаження ": " is before the loading day ", " — стара дата?": " — old date?", ": немає ні Must be ready, ні дати доставки, тому час не рахується": ": no Must be ready and no delivery date, so the time is not calculated", "Помилок на борді не знайдено.": "No board errors found.", "Нічого не знайдено серед трейлерів від учора і далі.": "Nothing found among trailers from yesterday on.", "✓ завантажено": "✓ loaded", ", на борді лише ": ", only on the board ", ", на борді ": ", on the board ", "виїхати до ": "depart by ", "рядок TRIP EMPTY (не рахується)": "TRIP EMPTY row (not counted)", ", без Trip#": ", no Trip#", " вант. · ": " loads · ", " · усе завантажено": " · all loaded", "Показати трейлер": "Show trailer", "до ": "until ", "без часу": "no time", "PN · ще на колії": "PN · still on the rail", "Почати до ": "Start by ", "почати ": "start ", "ETA борда": "Board ETA", "PN, ще на колії": "PN, still on the rail", " (без пауз, ": " (no stops, ", " тому)": " ago)", "Запас": "Buffer", " (за Samsara)": " (by Samsara)", " (за кінцем вікна ETA)": " (by the end of the ETA window)", "Тут на шкалі": "Here on the scale", "Позначки доків недоступні: немає збереження на сторінці": "Dock marks unavailable: no storage on this page", "✅ На доці": "✅ At dock", "Док №": "Dock #", "Номер доку для ": "Dock number for ", "стара позначка · ": "old mark · ", "відмічено ": "marked ", "Для спотера: поставити на док (": "For the spotter: put on a dock (", "Поставити на док:": "Put on a dock:", "Трейлер ": "Trailer ", "почати до ": "start by ", "стара позначка": "old mark", " — почати до ": " — start by ", "Ще без позначки: ": "Not marked yet: ", " трейл. на ярді": " trailers on yard", "Скопійовано ✓": "Copied ✓", "Скопіювати список": "Copy list", "Зміни на борді": "Board changes", "Зміни на борді за добу": "Board changes in the last day", "Закрити": "Close", "За останню добу змін немає.": "No changes in the last day.", "⚑ дедлайн": "⚑ deadline", "🔒 інструкція": "🔒 instruction", "📝 примітка": "📝 note", "раніше на ": "earlier by ", "пізніше на ": "later by ", "Нових змін: ": "New changes: ", "Нова зміна на борді": "New change on the board", "нові зміни": "new changes", "нових змін": "new changes", " на борді": " on the board", "… і ще ": "… and ", "Відкрити журнал ›": "Open the log ›", "Наживо": "Live", "Знімок": "Snapshot", "Джерело: Google Sheets «MKM 3.1 Inbound Ops»": "Source: Google Sheets «MKM 3.1 Inbound Ops»", "дані ": "data ", "· авто кожні 3 хв": "· auto every 3 min", "Зміни дедлайнів і приміток за добу (": "Deadline and note changes in the last day (", "нових: ": "new: ", "згорнути": "collapse", "розгорнути": "expand", "нова примітка": "new note", "дедлайн прибрали": "deadline removed", "дедлайн задали": "deadline set", "на ярді вже запізнюємось": "already late on yard", "HOT / ASAP на ярді": "HOT / ASAP on yard", "ETA минув, не на ярді": "ETA passed, not on yard", "без Unit ETA": "no Unit ETA", "з нестачею палет": "short of pallets", "Усі дні": "All days", "Минулі дні": "Past days", "Термінал": "Terminal", "Усі": "All", "На ярді немає трейлерів, які чекають деконсолідації.": "No trailers on the yard waiting for deconsolidation.", "Для цього дня нічого немає.": "Nothing for this day.", "↻ Читаю…": "↻ Reading…", "↻ Оновити": "↻ Refresh", "Прочитати борду зараз": "Read the board now", "Google Drive не підключений до Claude. Додайте його в Settings → Connectors і оновіть сторінку.": "Google Drive is not connected to Claude. Add it in Settings → Connectors and reload the page.", "Доступ до Google Drive закінчився. Перепідключіть його в Settings → Connectors.": "Google Drive access has expired. Reconnect it in Settings → Connectors.", "Потрібен дозвіл на читання Google Drive. Натисніть «Оновити з борди» і дозвольте доступ.": "Permission to read Google Drive is needed. Click «Refresh from the board» and allow access.", "Політика організації блокує читання Google Drive з цієї сторінки.": "Organization policy blocks reading Google Drive from this page.", "Google Drive зараз не відповідає. Спробуйте оновити за хвилину.": "Google Drive is not responding right now. Try refreshing in a minute.", "Не вдалося прочитати борду (": "Could not read the board (", "помилка": "error", "). Показую останній збережений знімок.": "). Showing the last saved snapshot.", "історію змін не збережено": "change history not saved", "Дозволити і оновити": "Allow and refresh", "Спробувати ще": "Try again", "◐ Авто": "◐ Auto", "☀ Світла": "☀ Light", "☾ Темна": "☾ Dark", "Тема: ": "Theme: ", ". Натисніть, щоб змінити": ". Click to change", " (натисніть, щоб змінити)": " (click to change)", "Добирає останню частину: ": "Completes the last part: ", "Черга деконсолідації: передача зміни": "Deconsolidation queue: shift handover", "Сформовано ": "Generated ", "   ·   зміна: наступні ": "   ·   shift: next ", " год, до ": "h, until ", "   ·   дані борди ": "   ·   board data ", " тому, ": " ago, ", "наживо": "live", "знімок": "snapshot", "невідомо": "unknown", "У роботі": "In progress", "На ярді, чекають": "On yard, waiting", "Приїдуть за зміну": "Arriving this shift", "Запізнюються": "Running late", "Завантажити на зміні": "Load this shift", "Помилки на борді": "Board errors", "трак ": "truck ", "Док ": "Dock ", "Спот": "Spot", "Зараз розвантажуються": "Unloading now", "Unit / трак": "Unit / truck", "Де": "Where", "Вант. / пал.": "Loads / pal.", "Увага": "Attention", "Черга на зміну": "Shift queue", "за пріоритетом: на ярді та ті, що приїдуть або мають почати до ": "by priority: on yard and those arriving or due to start by ", "На цю зміну трейлерів у черзі немає.": "No trailers queued for this shift.", "Де / ETA": "Where / ETA", "PN: на колії": "PN: on the rail", "без дедлайну": "no deadline", "\nзапізнення ": "\nlate ", "\n(орієнтовно)": "\n(approx.)", "Пізніше, після цієї зміни: ": "Later, after this shift: ", " трейл. (": " trl. (", "Must be ready на цю зміну та вантажі зі статусом PENDING / IN LINE / LOADING": "Must be ready this shift and loads with status PENDING / IN LINE / LOADING", "На цю зміну немає вантажів з Must be ready і немає підготовлених до завантаження.": "No loads with Must be ready this shift and none prepared for loading.", "Клієнт": "Customer", "Пал.": "Pal.", "Статус": "Status", "Деліверний трейлер": "Delivery trailer", "Де лежить": "Location", "Дедлайн": "Deadline", "орієнт. виїхати до ": "est. depart by ", "немає": "none", "Вантажі зі статусом без Must be ready: вантажити, коли деліверний трейлер на місці; якщо трейлера немає, лишаються наступній зміні.": "Loads with a status but no Must be ready: load when the delivery trailer is here; if it is not, they stay for the next shift.", "Розібрані, без вказівки диспетчера (лежать на стореджі): ": "Sorted, no dispatcher instruction (on storage): ", "Що поправити на борді": "What to fix on the board", "Що": "What", "Де на борді": "Where on the board", "Готую PDF…": "Preparing PDF…", "Не вдалося зробити PDF передачі зміни": "Could not make the shift handover PDF", ": не завантажилась бібліотека PDF, перевір інтернет і спробуй ще раз": ": the PDF library did not load, check the internet and try again", "ETA минув, на ярді не відмічено": "ETA passed, not marked on yard", "Intermodal-юніти зі статусом PN (pending notification): залізниця ще не повідомила про прибуття або ми ще не забрали контейнер. Часу приїзду немає, тому дивіться на дедлайн. Червоним виділені ті, де до початку розвантаження лишилося менше 8 годин.": "Intermodal units with status PN (pending notification): the railroad has not reported arrival yet or the container has not been picked up. There is no arrival time, so watch the deadline. Red marks those with less than 8 hours until unloading must start.", "PDF для супервайзера наступної зміни: черга на 12 годин": "PDF for the next shift supervisor: 12-hour queue", "PN: контейнер ще не забрано з колії": "PN: container not yet picked up from the rail", "Unit ETA / Deramp не проставлено": "Unit ETA / Deramp not set", "Вантажі, у яких усі частини вже UNLOADED, а на борді ще немає статусу LOADED / CH-OK і не вказано, хто завантажив (Loaded by). Порядок: за часом, до якого вантаж має бути готовий (Must be ready by, а якщо його немає, доставка мінус дорога).": "Loads whose parts are all UNLOADED, but the board has no LOADED / CH-OK status and no Loaded by yet. Order: by the time the load must be ready (Must be ready by; if missing, delivery minus travel time).", "Диспетчеру треба вказати на борді, де цей трейлер: YARD або час, коли буде. Поки цього немає, у чергу вище він не потрапляє.": "The dispatcher needs to state on the board where this trailer is: YARD or the expected time. Until then it does not enter the queue above.", "Для спотера": "For the spotter", "Пошук вантажу або трейлера": "Search for a load or trailer", "Пошук: G-номер або трейлер (напр. G49469P, SBT-43-H-61)": "Search: G-number or trailer (e.g. G49469P, SBT-43-H-61)", "Прибуття на найближчі 48 год": "Arrivals in the next 48h", "Розвантажується зараз": "Unloading now", "Розділи": "Sections", "Розібрано, чекає завантаження в доставку": "Sorted, waiting to load for delivery", "Список складають трейлери, які мають Unit ETA / Deramp = YARD, і жоден їхній рядок на борді не має Unit status UNLOADED (один трейлер може стояти в кількох днях). Порядок: за часом, коли треба почати розвантаження, мінус 2 год 15 хв на трейлер. Час береться з Must be ready by. Якщо його немає, рахуємо від доставки (колонка S) мінус дорога від ярду Markham (відстань за ZIP, ~50 mph). Якщо немає й цього: HOT/ASAP першим, далі за днем завантаження, у межах дня найдальший вантаж першим. Відстань і доставка наближені.": "The list holds trailers with Unit ETA / Deramp = YARD where no row on the board has Unit status UNLOADED (one trailer can sit in several days). Order: by the time unloading must start, which is 2 h 15 min before the deadline. The deadline comes from Must be ready by. If missing, it is delivery (column S) minus travel from the Markham yard (distance by ZIP, ~50 mph). If that is missing too: HOT/ASAP first, then by loading day, farthest load first within a day. Distance and delivery are approximate.", "Тема оформлення": "Theme", "Трейлери на ярді": "Trailers on yard", "Фільтр за днем завантаження": "Filter by loading day", "Час приїзду вже минув, а YARD на борді немає. Або трейлер приїхав і ETA не оновили, або він запізнюється. Уточніть у диспетчера.": "The arrival time has passed and there is no YARD on the board. Either the trailer arrived and the ETA was not updated, or it is late. Check with the dispatcher.", "Черга деконсолідації": "Deconsolidation queue", "Ще не на ярді": "Not on yard yet", "Що на борді заповнено неправильно або не до кінця. Біля кожного пункту аркуш і рядок, де виправити. Сторінка борду не змінює.": "What on the board is filled in wrong or incompletely. Each item shows the sheet and row to fix. This page does not change the board.", "Що потребує уваги": "Needs attention", "вікно ETA з борди": "ETA window from the board", "зараз": "now", "почати розвантаження до": "start unloading by", "ⓘ Як рахується черга": "ⓘ How the queue is ranked", "⬇ Передача зміни": "⬇ Shift handover", "зчитано ": "read ", " трак.": " trucks", " · даних немає": " · no data", "Склад WH": "Warehouse WH", "Storage-трейлер ": "Storage trailer ", "рядок без Trip#": "row without Trip#", "розібрано": "sorted", "Один рейс у доставку разом з:": "One delivery run together with:", "Місце в черзі": "Place in the queue", "Storage: помилка на борді": "Storage: error on the board", ": у Storage вписано «": ": Storage says «", "», схоже на заголовок дня, а не місце": "», looks like a day header, not a place", "Фільтр за терміналом": "Filter by terminal", "Розвантажені трейлери": "Unloaded trailers", "Трейлери з Unit status UNLOADED за дні завантаження від учора. Під кожним вантажем видно, що з ним далі: уже завантажений у доставку, лежить на стореджі чи чекає іншу частину.": "Trailers with Unit status UNLOADED for loading days from yesterday on. Each load shows what happened next: loaded for delivery, on storage, or waiting for another part.", "Завантажені вантажі": "Loaded loads", "Вантажі зі статусом LOADED / CH-OK / CH-NOK у колонці B.": "Loads with status LOADED / CH-OK / CH-NOK in column B.", "Готово": "Done", "Розвантажених трейлерів поки немає.": "No unloaded trailers yet.", "завантажено": "loaded", "чекає частину: ": "waits for a part: ", "Storage не вказано": "Storage not set", " завантажено": " loaded", " на стореджі": " on storage", " чекає частину": " waiting for a part", "Завантажених вантажів поки немає.": "No loaded loads yet.", "Завантажив": "Loaded by", "Сьогодні": "Today", "Вчора": "Yesterday", "Завтра": "Tomorrow", "День не вказано": "Day not set", "між ": "between ", " і ": " and ", " год ": "h ", "Раніше · час не зафіксовано": "Earlier · time not recorded", " — розвантажено ": " — unloaded ", " — завантажено ": " — loaded ", "Трейлери з Unit status UNLOADED, по днях розвантаження. Час сторінка фіксує сама, коли бачить на борді OFFLOADING і UNLOADED (борда часу не зберігає), тому він точний, поки сторінка десь відкрита; інакше показано проміжок. Під кожним вантажем видно, що з ним далі: уже завантажений у доставку, лежить на стореджі чи чекає іншу частину.": "Trailers with Unit status UNLOADED, by unloading day. The page records the time itself when it sees OFFLOADING and UNLOADED on the board (the board keeps no times), so it is exact while the page is open somewhere; otherwise a range is shown. Each load shows what happened next: loaded for delivery, on storage, or waiting for another part.", " — розвантажено": " — unloaded", " — завантажено": " — loaded", "Пошук": "Search", "Пошук (клавіша /)": "Search (press /)", "G-номер або трейлер": "G-number or trailer", "G-номер, трейлер, трак": "G-number, trailer, truck", "трейлер у доставку": "delivery trailer", "завантажено ": "loaded ", "трейлер": "trailer", "Прибуття на найближчі ": "Arrivals in the next ", "Зміни": "Shifts", "прибуде": "arriving", "Нічна": "Night", "Денна": "Day", " трейл.": " trl.", "нічого": "nothing", "запас": "slack", "запас ": "slack ", "Палет": "Pallets", "Згорнути ⌃": "Collapse ⌃", "Ще ": "+", " трейл.: приїдуть скоро, але почати лише пізніше ніж за ": " more trl.: arrive soon, but start later than in ", " год ⌄": "h ⌄", "24 год": "24h", "48 год": "48h", "За прибуттям": "By arrival", "За пріоритетом": "By priority", "запас є": "has slack", "запас менше 2 год": "slack under 2h", "не встигає": "will be late", "нічна зміна 18:00–06:00": "night shift 18:00–06:00", "не встигає на ": "late by ", "Що приїде за зміну": "Arriving during the shift", " трейл. · ": " trl. · ", " · не встигають: ": " · late: ", "За зміну нових трейлерів не приїде.": "No new trailers arrive during the shift.", "PN - ще на колії": "PN - still on rail", "трейлер ": "trailer ", "НЕ ВСТИГАЄ ": "LATE ", "нічна зміна": "night shift", "! Не встигає: приїде пізніше, ніж треба почати": "! Late: arrives after unloading must start", "\nменше 2 год": "\nunder 2h", "зелена": "green", "синя": "blue", "Палітра: ": "Palette: ", "Колір оформлення": "Colour palette", "розвантажується\n(може не завершитись)": "unloading\n(may not finish)", "Немає даних": "No data", "Увійти через Google": "Sign in with Google", "Щоб побачити борду, увійдіть через Google. Доступ є лише в тих, кому відкрита таблиця «MKM 3.1 Inbound Ops».": "Sign in with Google to see the board. Only people the «MKM 3.1 Inbound Ops» sheet is shared with have access.", "Сесія Google закінчилась (діє 1 годину). Натисніть, щоб продовжити.": "Your Google session has expired (it lasts 1 hour). Click to continue.", "Вхід через Google скасовано або вікно заблоковане браузером.": "Google sign-in was cancelled or the window was blocked by the browser.", "У вашого Google-акаунта немає доступу до таблиці «MKM 3.1 Inbound Ops». Попросіть власника таблиці відкрити її для вас.": "Your Google account has no access to the «MKM 3.1 Inbound Ops» sheet. Ask the sheet owner to share it with you.", "Не вдалося завантажити вхід Google. Перевірте інтернет.": "Could not load Google sign-in. Check the internet.", "Google Drive не відповідає (": "Google Drive is not responding (", "). Спробуйте за хвилину.": "). Try again in a minute.", "Прибуття: ": "Arrivals: ", "На цей день прибуттів на борді немає.": "No arrivals on the board for this day.", "Прибуття по днях": "Arrivals by day", "У найближчі години прибуттів немає. Виберіть день вище.": "No arrivals in the coming hours. Pick a day above.", " без ETA": " no ETA", "Ще без ETA, вантажі на цей день: ": "No ETA yet, loads for this day: ", "96 год": "96h", "2 год 15 хв": "2h 15min", ": чому саме тут": ": why here", "HOT / ASAP на борді без часу: такий трейлер іде на самий верх.": "HOT / ASAP on the board without a time: such a trailer goes to the very top.", "Диспетчер поставив Must be ready ": "The dispatcher set Must be ready ", " для ": " for ", ". Розвантаження займає ~": ". Unloading takes ~", ", тому почати треба до ": ", so it must start by ", "Must be ready немає, рахую від доставки": "No Must be ready, counting from the delivery", " mi від Markham": " mi from Markham", ". Мінус дорога — виїхати до ": ". Minus the drive — depart by ", ", мінус ~": ", minus ~", " на розвантаження — почати до ": " for unloading — start by ", " Час орієнтовний.": " The time is approximate.", "Немає ні Must be ready, ні дати доставки. Тому порядок такий: спершу HOT, далі за днем завантаження": "No Must be ready and no delivery date. So the order is: HOT first, then by loading day", ", у межах дня — найдальший вантаж": ", within a day the farthest load first", "Уже запізнюємось на ": "Already late by ", "Запас до початку: ": "Time left to start: ", "Добирає останню частину вантажу ": "Completes the last part of load ", ": коли дедлайни близькі (до 30 хв), такий трейлер іде першим.": ": when deadlines are close (within 30 min), such a trailer goes first.", "Вище за №": "Above #", ": той треба почати на ": ": that one must start ", " пізніше.": " later.", ": той самий час, але цей ": ": same time, but this one ", "добирає вантаж.": "completes a load.", "має більше палет.": "has more pallets.", ": у того немає часу.": ": that one has no time.", "Нижче за №": "Below #", " раніше.": " earlier.", "Без часу прибуття на борді · ": "No arrival time on the board · ", "диспетчер ще не вказав ETA; червона риска — коли треба почати": "the dispatcher has not set an ETA yet; the red mark is when unloading must start", "показати": "show", "⌃ Згорнути всі": "⌃ Collapse all", "Закрити всі розгорнуті трейлери": "Close all opened trailers", "Відкрити трейлер у черзі": "Open the trailer in the queue", "Натисніть, щоб скопіювати": "Click to copy", "Пошук: G-номер або поїздка": "Search: G-number or trip", "Пошук у змінах": "Search the changes", "Нічого не знайдено.": "Nothing found.", "почали ": "started ", "почали до ": "started before ", "на ярді з ": "on yard since ", "приїхав ": "arrived ", "Почали: ": "Started: ", "Почали: до ": "Started: before ", "ETA було: ": "ETA was: ", " у ": " into ", ": вантаж уже вантажать, а трейлер ": ": the load is already being loaded, but trailer ", " на борді не UNLOADED. Перевір Unit status — можливо, його стерли.": " is not UNLOADED on the board. Check Unit status — it may have been erased.", ": трейлер ": ": trailer ", ": UNLOADED прибрали з борди (тепер ": ": UNLOADED was removed from the board (now ", "UNLOADED прибрали, тепер ": "UNLOADED removed, now ", "🚛 трейлер": "🚛 trailer", "↩ статус": "↩ status", "Змінили номер трейлера: ": "Trailer number changed: ", "На борді прибрали UNLOADED (": "UNLOADED was removed on the board (", "), хоча трейлер уже розвантажували": "), although the trailer was already unloaded", "порожньо": "empty"};
+var YQ_EN = {"Нд": "Sun", "Пн": "Mon", "Вт": "Tue", "Ср": "Wed", "Чт": "Thu", "Пт": "Fri", "Сб": "Sat", " хв": " min", " год": "h", " д ": "d ", "⬆ NOSE · до кабіни": "⬆ NOSE · to the cab", "⬇ TAIL · до дверей": "⬇ TAIL · to the doors", "↔ MIDDLE · посередині": "↔ MIDDLE · in the middle", ": примітка «": ": note «", "не вказано": "not set", "розвантажено": "unloaded", "стан не вказано": "status not set", "нема на борді": "not on the board", "на ярді": "on yard", "розвантажується": "unloading", "їде, ": "en route, ", "ETA не вказано": "ETA not set", "Запізнюємось: розвантаження треба було почати ": "Running late: unloading should have started ", " тому": " ago", "Samsara: трак буде ": "Samsara: truck will be at ", ", а почати треба до ": ", but unloading must start by ", "ETA минув ": "ETA passed ", " тому, YARD на борді немає": " ago, no YARD on the board", "PN: до початку розвантаження менше ": "PN: less than ", " год, а контейнер ще на колії": "h until unloading must start, and the container is still on the rail", "Нова примітка: ": "New note: ", "Дедлайн змінено: ": "Deadline changed: ", "На борді немає Unit ETA / Deramp": "No Unit ETA / Deramp on the board", "За бордою трейлер приїде пізно (до ": "By the board the trailer arrives late (until ", "), але Samsara показує ": "), but Samsara shows ", ": встигаємо, якщо трак не зупиниться надовго": ": on time if the truck does not stop for long", "За бордою трейлер приїде пізно: ETA до ": "By the board the trailer arrives late: ETA until ", ": на борді ": ": on the board ", " з ": " of ", " пал., не вистачає ": " pal., missing ", " пал. при Total ": " pal. with Total ", ", забагато на ": ", too many by ", " чекає частину: ": " waits for a part: ", " пал., ": " pal., ", "Трейлер": "Trailer", "Трак": "Truck", "вантаж": "load", "вантажі": "loads", " пал.": " pal.", " (завантажено ": " (loaded ", "Завант.": "Load days", "✅ Док ": "✅ Dock ", "🚚 Поставити": "🚚 Spot", "Стан": "Status", "✓ Усе завантажено": "✓ All loaded", "Виїхати до": "Depart by", "запізнення ": "late ", "через ": "in ", "Почати до": "Start by", "Без часу": "No time", "день ": "day ", "Вручну: ": "Manual: ", "Samsara без пауз: ": "Samsara, no stops: ", "щойно": "just now", " (застаріло)": " (stale)", "Розвантажується": "Unloading", "ETA було ": "ETA was ", "На ярді": "On yard", "ETA прибуття": "ETA arrival", "контейнер ще на колії": "container still on the rail", "як на борді": "as on the board", "орієнтовно": "approx.", "за ": "by ", "дедлайн від диспетчера": "dispatcher deadline", " · за ": " · by ", " · доставка ": " · delivery ", "Доставка": "Delivery", "✓ Добирає останню частину: ": "✓ Completes the last part: ", "У цьому трейлері на борді поки немає рядків з PRO#.": "No rows with a PRO# in this trailer on the board yet.", ": показати або сховати вантажі": ": show or hide loads", "сховати ⌃": "hide ⌃", "вантажі ⌄": "loads ⌄", "Завантажено": "Loaded", "завантажив ": "loaded by ", " · збирається повністю": " · comes together in full", " · цілий": " · complete", "Куди": "To", "Забагато палет": "Too many pallets", " при Total ": " with Total ", "Не на борді": "Not on the board", " пал. (є ": " pal. (have ", "Водій": "Driver", " · час орієнтовний": " · time is approximate", "доставка в Markham: час трейлера не задає": "delivery to Markham: does not set the trailer time", "дата доставки раніша за день завантаження: час не рахую, перевір борду": "delivery date is before the loading day: time not counted, check the board", "✓ остання частина": "✓ last part", " · Storage не вказано": " · Storage not set", "у трейлер ": "into trailer ", "завантажується": "loading", "без статусу": "no status", "PENDING · на доці, розписаний": "PENDING · at the dock, scheduled", "IN LINE · підготовлений до роботи": "IN LINE · ready to work", "LOADING · завантажується": "LOADING · loading", "Розвантаження": "Unloading", "До відвантаження": "Outbound", "Перевірка борди": "Board check", "нових ": "new ", "Зараз немає розібраних вантажів з дедлайном, що чекають відвантаження.": "No sorted loads with a deadline waiting to ship right now.", "НОВЕ": "NEW", "доставка ": "delivery ", "розібрано з: ": "sorted from: ", "дедлайн: до ": "deadline: by ", "за Must be ready": "by Must be ready", "за доставкою": "by delivery", "аркуш «": "sheet «", ", рядок ": ", row ", ": у рядку вантажу порожній Trip#": ": empty Trip# in the load row", "Немає Unit ETA / Deramp: невідомо, де трейлер": "No Unit ETA / Deramp: trailer location unknown", " минув, а YARD не відмічено": " passed, but YARD is not marked", "» не вдалося прочитати як час": "» could not be read as a time", ". Можливо, не внесено трейлер з рештою": ". The trailer with the rest may not be entered", ": рядок з ": ": row with ", " пал. без Trip#": " pal. without Trip#", ": рядок «TRIP EMPTY» має ": ": row «TRIP EMPTY» has ", ": номер трейлера ": ": trailer number ", " стоїть у колонці Must be ready by, а не в Unit number": " is in the Must be ready by column, not in Unit number", ": доставка ": ": delivery ", " раніша за день завантаження ": " is before the loading day ", " — стара дата?": " — old date?", ": немає ні Must be ready, ні дати доставки, тому час не рахується": ": no Must be ready and no delivery date, so the time is not calculated", "Помилок на борді не знайдено.": "No board errors found.", "Нічого не знайдено серед трейлерів від учора і далі.": "Nothing found among trailers from yesterday on.", "✓ завантажено": "✓ loaded", ", на борді лише ": ", only on the board ", ", на борді ": ", on the board ", "виїхати до ": "depart by ", "рядок TRIP EMPTY (не рахується)": "TRIP EMPTY row (not counted)", ", без Trip#": ", no Trip#", " вант. · ": " loads · ", " · усе завантажено": " · all loaded", "Показати трейлер": "Show trailer", "до ": "by ", "без часу": "no time", "PN · ще на колії": "PN · still on the rail", "Почати до ": "Start by ", "почати ": "start ", "ETA борда": "Board ETA", "PN, ще на колії": "PN, still on the rail", " (без пауз, ": " (no stops, ", " тому)": " ago)", "Запас": "Buffer", " (за Samsara)": " (by Samsara)", " (за кінцем вікна ETA)": " (by the end of the ETA window)", "Тут на шкалі": "Here on the scale", "Позначки доків недоступні: немає збереження на сторінці": "Dock marks unavailable: no storage on this page", "✅ На доці": "✅ At dock", "Док №": "Dock #", "Номер доку для ": "Dock number for ", "стара позначка · ": "old mark · ", "відмічено ": "marked ", "Для спотера: поставити на док (": "For the spotter: put on a dock (", "Поставити на док:": "Put on a dock:", "Трейлер ": "Trailer ", "почати до ": "start by ", "стара позначка": "old mark", " — почати до ": " — start by ", "Ще без позначки: ": "Not marked yet: ", " трейл. на ярді": " trailers on yard", "Скопійовано ✓": "Copied ✓", "Скопіювати список": "Copy list", "Зміни на борді": "Board changes", "Зміни на борді за добу": "Board changes in the last day", "Закрити": "Close", "За останню добу змін немає.": "No changes in the last day.", "⚑ дедлайн": "⚑ deadline", "🔒 інструкція": "🔒 instruction", "📝 примітка": "📝 note", "раніше на ": "earlier by ", "пізніше на ": "later by ", "Нових змін: ": "New changes: ", "Нова зміна на борді": "New change on the board", "нові зміни": "new changes", "нових змін": "new changes", " на борді": " on the board", "… і ще ": "… and ", "Відкрити журнал ›": "Open the log ›", "Наживо": "Live", "Знімок": "Snapshot", "Джерело: Google Sheets «MKM 3.1 Inbound Ops»": "Source: Google Sheets «MKM 3.1 Inbound Ops»", "дані ": "data ", "· авто кожні 3 хв": "· auto every 3 min", "Зміни дедлайнів і приміток за добу (": "Deadline and note changes in the last day (", "нових: ": "new: ", "згорнути": "collapse", "розгорнути": "expand", "нова примітка": "new note", "дедлайн прибрали": "deadline removed", "дедлайн задали": "deadline set", "на ярді вже запізнюємось": "already late on yard", "HOT / ASAP на ярді": "HOT / ASAP on yard", "ETA минув, не на ярді": "ETA passed, not on yard", "без Unit ETA": "no Unit ETA", "з нестачею палет": "short of pallets", "Усі дні": "All days", "Минулі дні": "Past days", "Термінал": "Terminal", "Усі": "All", "На ярді немає трейлерів, які чекають деконсолідації.": "No trailers on the yard waiting for deconsolidation.", "Для цього дня нічого немає.": "Nothing for this day.", "↻ Читаю…": "↻ Reading…", "↻ Оновити": "↻ Refresh", "Прочитати борду зараз": "Read the board now", "Google Drive не підключений до Claude. Додайте його в Settings → Connectors і оновіть сторінку.": "Google Drive is not connected to Claude. Add it in Settings → Connectors and reload the page.", "Доступ до Google Drive закінчився. Перепідключіть його в Settings → Connectors.": "Google Drive access has expired. Reconnect it in Settings → Connectors.", "Потрібен дозвіл на читання Google Drive. Натисніть «Оновити з борди» і дозвольте доступ.": "Permission to read Google Drive is needed. Click «Refresh from the board» and allow access.", "Політика організації блокує читання Google Drive з цієї сторінки.": "Organization policy blocks reading Google Drive from this page.", "Google Drive зараз не відповідає. Спробуйте оновити за хвилину.": "Google Drive is not responding right now. Try refreshing in a minute.", "Не вдалося прочитати борду (": "Could not read the board (", "помилка": "error", "). Показую останній збережений знімок.": "). Showing the last saved snapshot.", "історію змін не збережено": "change history not saved", "Дозволити і оновити": "Allow and refresh", "Спробувати ще": "Try again", "◐ Авто": "◐ Auto", "☀ Світла": "☀ Light", "☾ Темна": "☾ Dark", "Тема: ": "Theme: ", ". Натисніть, щоб змінити": ". Click to change", " (натисніть, щоб змінити)": " (click to change)", "Добирає останню частину: ": "Completes the last part: ", "Черга деконсолідації: передача зміни": "Deconsolidation queue: shift handover", "Сформовано ": "Generated ", "   ·   зміна: наступні ": "   ·   shift: next ", " год, до ": "h, until ", "   ·   дані борди ": "   ·   board data ", " тому, ": " ago, ", "наживо": "live", "знімок": "snapshot", "невідомо": "unknown", "У роботі": "In progress", "На ярді, чекають": "On yard, waiting", "Приїдуть за зміну": "Arriving this shift", "Запізнюються": "Running late", "Завантажити на зміні": "Load this shift", "Помилки на борді": "Board errors", "трак ": "truck ", "Док ": "Dock ", "Спот": "Spot", "Зараз розвантажуються": "Unloading now", "Unit / трак": "Unit / truck", "Де": "Where", "Вант. / пал.": "Loads / pal.", "Увага": "Attention", "Черга на зміну": "Shift queue", "за пріоритетом: на ярді та ті, що приїдуть або мають почати до ": "by priority: on yard and those arriving or due to start by ", "На цю зміну трейлерів у черзі немає.": "No trailers queued for this shift.", "Де / ETA": "Where / ETA", "PN: на колії": "PN: on the rail", "без дедлайну": "no deadline", "\nзапізнення ": "\nlate ", "\n(орієнтовно)": "\n(approx.)", "Пізніше, після цієї зміни: ": "Later, after this shift: ", " трейл. (": " trl. (", "Must be ready на цю зміну та вантажі зі статусом PENDING / IN LINE / LOADING": "Must be ready this shift and loads with status PENDING / IN LINE / LOADING", "На цю зміну немає вантажів з Must be ready і немає підготовлених до завантаження.": "No loads with Must be ready this shift and none prepared for loading.", "Клієнт": "Customer", "Пал.": "Pal.", "Статус": "Status", "Деліверний трейлер": "Delivery trailer", "Де лежить": "Location", "Дедлайн": "Deadline", "орієнт. виїхати до ": "est. depart by ", "немає": "none", "Вантажі зі статусом без Must be ready: вантажити, коли деліверний трейлер на місці; якщо трейлера немає, лишаються наступній зміні.": "Loads with a status but no Must be ready: load when the delivery trailer is here; if it is not, they stay for the next shift.", "Розібрані, без вказівки диспетчера (лежать на стореджі): ": "Sorted, no dispatcher instruction (on storage): ", "Що поправити на борді": "What to fix on the board", "Що": "What", "Де на борді": "Where on the board", "Готую PDF…": "Preparing PDF…", "Не вдалося зробити PDF передачі зміни": "Could not make the shift handover PDF", ": не завантажилась бібліотека PDF, перевір інтернет і спробуй ще раз": ": the PDF library did not load, check the internet and try again", "ETA минув, на ярді не відмічено": "ETA passed, not marked on yard", "Intermodal-юніти зі статусом PN (pending notification): залізниця ще не повідомила про прибуття або ми ще не забрали контейнер. Часу приїзду немає, тому дивіться на дедлайн. Червоним виділені ті, де до початку розвантаження лишилося менше 8 годин.": "Intermodal units with status PN (pending notification): the railroad has not reported arrival yet or the container has not been picked up. There is no arrival time, so watch the deadline. Red marks those with less than 8 hours until unloading must start.", "PDF для супервайзера наступної зміни: черга на 12 годин": "PDF for the next shift supervisor: 12-hour queue", "PN: контейнер ще не забрано з колії": "PN: container not yet picked up from the rail", "Unit ETA / Deramp не проставлено": "Unit ETA / Deramp not set", "Вантажі, у яких усі частини вже UNLOADED, а на борді ще немає статусу LOADED / CH-OK і не вказано, хто завантажив (Loaded by). Порядок: за часом, до якого вантаж має бути готовий (Must be ready by, а якщо його немає, доставка мінус дорога).": "Loads whose parts are all UNLOADED, but the board has no LOADED / CH-OK status and no Loaded by yet. Order: by the time the load must be ready (Must be ready by; if missing, delivery minus travel time).", "Диспетчеру треба вказати на борді, де цей трейлер: YARD або час, коли буде. Поки цього немає, у чергу вище він не потрапляє.": "The dispatcher needs to state on the board where this trailer is: YARD or the expected time. Until then it does not enter the queue above.", "Для спотера": "For the spotter", "Пошук вантажу або трейлера": "Search for a load or trailer", "Пошук: G-номер або трейлер (напр. G49469P, SBT-43-H-61)": "Search: G-number or trailer (e.g. G49469P, SBT-43-H-61)", "Прибуття на найближчі 48 год": "Arrivals in the next 48h", "Розвантажується зараз": "Unloading now", "Розділи": "Sections", "Розібрано, чекає завантаження в доставку": "Sorted, waiting to load for delivery", "Список складають трейлери, які мають Unit ETA / Deramp = YARD, і жоден їхній рядок на борді не має Unit status UNLOADED (один трейлер може стояти в кількох днях). Порядок: за часом, коли треба почати розвантаження, мінус 2 год 15 хв на трейлер. Час береться з Must be ready by. Якщо його немає, рахуємо від доставки (колонка S) мінус дорога від ярду Markham (відстань за ZIP, ~50 mph). Якщо немає й цього: HOT/ASAP першим, далі за днем завантаження, у межах дня найдальший вантаж першим. Відстань і доставка наближені.": "The list holds trailers with Unit ETA / Deramp = YARD where no row on the board has Unit status UNLOADED (one trailer can sit in several days). Order: by the time unloading must start, which is 2 h 15 min before the deadline. The deadline comes from Must be ready by. If missing, it is delivery (column S) minus travel from the Markham yard (distance by ZIP, ~50 mph). If that is missing too: HOT/ASAP first, then by loading day, farthest load first within a day. Distance and delivery are approximate.", "Тема оформлення": "Theme", "Трейлери на ярді": "Trailers on yard", "Фільтр за днем завантаження": "Filter by loading day", "Час приїзду вже минув, а YARD на борді немає. Або трейлер приїхав і ETA не оновили, або він запізнюється. Уточніть у диспетчера.": "The arrival time has passed and there is no YARD on the board. Either the trailer arrived and the ETA was not updated, or it is late. Check with the dispatcher.", "Черга деконсолідації": "Deconsolidation queue", "Ще не на ярді": "Not on yard yet", "Що на борді заповнено неправильно або не до кінця. Біля кожного пункту аркуш і рядок, де виправити. Сторінка борду не змінює.": "What on the board is filled in wrong or incompletely. Each item shows the sheet and row to fix. This page does not change the board.", "Що потребує уваги": "Needs attention", "вікно ETA з борди": "ETA window from the board", "зараз": "now", "почати розвантаження до": "start unloading by", "ⓘ Як рахується черга": "ⓘ How the queue is ranked", "⬇ Передача зміни": "⬇ Shift handover", "зчитано ": "read ", " трак.": " trucks", " · даних немає": " · no data", "Склад WH": "Warehouse WH", "Storage-трейлер ": "Storage trailer ", "рядок без Trip#": "row without Trip#", "розібрано": "sorted", "Один рейс у доставку разом з:": "One delivery run together with:", "Місце в черзі": "Place in the queue", "Storage: помилка на борді": "Storage: error on the board", ": у Storage вписано «": ": Storage says «", "», схоже на заголовок дня, а не місце": "», looks like a day header, not a place", "Фільтр за терміналом": "Filter by terminal", "Розвантажені трейлери": "Unloaded trailers", "Трейлери з Unit status UNLOADED за дні завантаження від учора. Під кожним вантажем видно, що з ним далі: уже завантажений у доставку, лежить на стореджі чи чекає іншу частину.": "Trailers with Unit status UNLOADED for loading days from yesterday on. Each load shows what happened next: loaded for delivery, on storage, or waiting for another part.", "Завантажені вантажі": "Loaded loads", "Вантажі зі статусом LOADED / CH-OK / CH-NOK у колонці B.": "Loads with status LOADED / CH-OK / CH-NOK in column B.", "Готово": "Done", "Розвантажених трейлерів поки немає.": "No unloaded trailers yet.", "завантажено": "loaded", "чекає частину: ": "waits for a part: ", "Storage не вказано": "Storage not set", " завантажено": " loaded", " на стореджі": " on storage", " чекає частину": " waiting for a part", "Завантажених вантажів поки немає.": "No loaded loads yet.", "Завантажив": "Loaded by", "Сьогодні": "Today", "Вчора": "Yesterday", "Завтра": "Tomorrow", "День не вказано": "Day not set", "між ": "between ", " і ": " and ", " год ": "h ", "Раніше · час не зафіксовано": "Earlier · time not recorded", " — розвантажено ": " — unloaded ", " — завантажено ": " — loaded ", "Трейлери з Unit status UNLOADED, по днях розвантаження. Час сторінка фіксує сама, коли бачить на борді OFFLOADING і UNLOADED (борда часу не зберігає), тому він точний, поки сторінка десь відкрита; інакше показано проміжок. Під кожним вантажем видно, що з ним далі: уже завантажений у доставку, лежить на стореджі чи чекає іншу частину.": "Trailers with Unit status UNLOADED, by unloading day. The page records the time itself when it sees OFFLOADING and UNLOADED on the board (the board keeps no times), so it is exact while the page is open somewhere; otherwise a range is shown. Each load shows what happened next: loaded for delivery, on storage, or waiting for another part.", " — розвантажено": " — unloaded", " — завантажено": " — loaded", "Пошук": "Search", "Пошук (клавіша /)": "Search (press /)", "G-номер або трейлер": "G-number or trailer", "G-номер, трейлер, трак": "G-number, trailer, truck", "трейлер у доставку": "delivery trailer", "завантажено ": "loaded ", "трейлер": "trailer", "Прибуття на найближчі ": "Arrivals in the next ", "Зміни": "Shifts", "прибуде": "arriving", "Нічна": "Night", "Денна": "Day", " трейл.": " trl.", "нічого": "nothing", "запас": "slack", "запас ": "slack ", "Палет": "Pallets", "Згорнути ⌃": "Collapse ⌃", "Ще ": "+", " трейл.: приїдуть скоро, але почати лише пізніше ніж за ": " more trl.: arrive soon, but start later than in ", " год ⌄": "h ⌄", "24 год": "24h", "48 год": "48h", "За прибуттям": "By arrival", "За пріоритетом": "By priority", "запас є": "has slack", "запас менше 2 год": "slack under 2h", "не встигає": "will be late", "нічна зміна 18:00–06:00": "night shift 18:00–06:00", "не встигає на ": "late by ", "Що приїде за зміну": "Arriving during the shift", " трейл. · ": " trl. · ", " · не встигають: ": " · late: ", "За зміну нових трейлерів не приїде.": "No new trailers arrive during the shift.", "PN - ще на колії": "PN - still on rail", "трейлер ": "trailer ", "НЕ ВСТИГАЄ ": "LATE ", "нічна зміна": "night shift", "! Не встигає: приїде пізніше, ніж треба почати": "! Late: arrives after unloading must start", "\nменше 2 год": "\nunder 2h", "зелена": "green", "синя": "blue", "Палітра: ": "Palette: ", "Колір оформлення": "Colour palette", "розвантажується\n(може не завершитись)": "unloading\n(may not finish)", "Немає даних": "No data", "Увійти через Google": "Sign in with Google", "Щоб побачити борду, увійдіть через Google. Доступ є лише в тих, кому відкрита таблиця «MKM 3.1 Inbound Ops».": "Sign in with Google to see the board. Only people the «MKM 3.1 Inbound Ops» sheet is shared with have access.", "Сесія Google закінчилась (діє 1 годину). Натисніть, щоб продовжити.": "Your Google session has expired (it lasts 1 hour). Click to continue.", "Вхід через Google скасовано або вікно заблоковане браузером.": "Google sign-in was cancelled or the window was blocked by the browser.", "У вашого Google-акаунта немає доступу до таблиці «MKM 3.1 Inbound Ops». Попросіть власника таблиці відкрити її для вас.": "Your Google account has no access to the «MKM 3.1 Inbound Ops» sheet. Ask the sheet owner to share it with you.", "Не вдалося завантажити вхід Google. Перевірте інтернет.": "Could not load Google sign-in. Check the internet.", "Google Drive не відповідає (": "Google Drive is not responding (", "). Спробуйте за хвилину.": "). Try again in a minute.", "Прибуття: ": "Arrivals: ", "На цей день прибуттів на борді немає.": "No arrivals on the board for this day.", "Прибуття по днях": "Arrivals by day", "У найближчі години прибуттів немає. Виберіть день вище.": "No arrivals in the coming hours. Pick a day above.", " без ETA": " no ETA", "Ще без ETA, вантажі на цей день: ": "No ETA yet, loads for this day: ", "96 год": "96h", "2 год 15 хв": "2h 15min", ": чому саме тут": ": why here", "HOT / ASAP на борді без часу: такий трейлер іде на самий верх.": "HOT / ASAP on the board without a time: such a trailer goes to the very top.", "Диспетчер поставив Must be ready ": "The dispatcher set Must be ready ", " для ": " for ", ". Розвантаження займає ~": ". Unloading takes ~", ", тому почати треба до ": ", so it must start by ", "Must be ready немає, рахую від доставки": "No Must be ready, counting from the delivery", " mi від Markham": " mi from Markham", ". Мінус дорога — виїхати до ": ". Minus the drive — depart by ", ", мінус ~": ", minus ~", " на розвантаження — почати до ": " for unloading — start by ", " Час орієнтовний.": " The time is approximate.", "Немає ні Must be ready, ні дати доставки. Тому порядок такий: спершу HOT, далі за днем завантаження": "No Must be ready and no delivery date. So the order is: HOT first, then by loading day", ", у межах дня — найдальший вантаж": ", within a day the farthest load first", "Уже запізнюємось на ": "Already late by ", "Запас до початку: ": "Time left to start: ", "Добирає останню частину вантажу ": "Completes the last part of load ", ": коли дедлайни близькі (до 30 хв), такий трейлер іде першим.": ": when deadlines are close (within 30 min), such a trailer goes first.", "Вище за №": "Above #", ": той треба почати на ": ": that one must start ", " пізніше.": " later.", ": той самий час, але цей ": ": same time, but this one ", "добирає вантаж.": "completes a load.", "має більше палет.": "has more pallets.", ": у того немає часу.": ": that one has no time.", "Нижче за №": "Below #", " раніше.": " earlier.", "Без часу прибуття на борді · ": "No arrival time on the board · ", "диспетчер ще не вказав ETA; червона риска — коли треба почати": "the dispatcher has not set an ETA yet; the red mark is when unloading must start", "показати": "show", "⌃ Згорнути всі": "⌃ Collapse all", "Закрити всі розгорнуті трейлери": "Close all opened trailers", "Відкрити трейлер у черзі": "Open the trailer in the queue", "Натисніть, щоб скопіювати": "Click to copy", "Пошук: G-номер або поїздка": "Search: G-number or trip", "Пошук у змінах": "Search the changes", "Нічого не знайдено.": "Nothing found.", "почали ": "started ", "почали до ": "started before ", "на ярді з ": "on yard since ", "приїхав ": "arrived ", "Почали: ": "Started: ", "Почали: до ": "Started: before ", "ETA було: ": "ETA was: ", " у ": " into ", ": вантаж уже вантажать, а трейлер ": ": the load is already being loaded, but trailer ", " на борді не UNLOADED. Перевір Unit status — можливо, його стерли.": " is not UNLOADED on the board. Check Unit status — it may have been erased.", ": трейлер ": ": trailer ", ": UNLOADED прибрали з борди (тепер ": ": UNLOADED was removed from the board (now ", "UNLOADED прибрали, тепер ": "UNLOADED removed, now ", "🚛 трейлер": "🚛 trailer", "↩ статус": "↩ status", "Змінили номер трейлера: ": "Trailer number changed: ", "На борді прибрали UNLOADED (": "UNLOADED was removed on the board (", "), хоча трейлер уже розвантажували": "), although the trailer was already unloaded", "порожньо": "empty", "Загальна картина": "Overview", "до кінця ": "ends in ", "розвантажено за зміну": "unloaded this shift", "розвантажується зараз": "unloading now", "вантажів завантажено в доставку": "loads loaded for delivery", "Розвантажено по годинах": "Unloaded per hour", "Час розвантаження сторінка записує сама, коли відкрита; тут цих даних поки немає.": "The page records unloading times itself while it is open; there is no such data here yet.", " трейл. розвантажено": " trl. unloaded", "в дорозі": "en route", "без ETA": "no ETA", "Дні завантаження на борді: скільки трейлерів кожного дня вже розвантажено": "Loading days on the board: how many trailers of each day are already unloaded", "почнеться через ": "starts in ", "план зміни: що вже на ярді або приїде щонайменше за годину до кінця зміни": "shift plan: what is on the yard or arrives at least an hour before the shift ends", "приїде до кінця зміни": "arrives before shift end", "Лишилось ": "Left: ", " в роботі, ": " unloading, ", " на ярді, ": " on yard, ", " ще в дорозі)": " still en route)", "треба ≈": "need ≈", " трейл./год": " trl./h", "На цю зміну поки нічого немає: ярд порожній і до кінця зміни ніхто не приїде.": "Nothing for this shift yet: the yard is empty and nobody arrives before it ends.", "приїде за цю зміну": "arrives this shift", "приїде після зміни": "arrives after the shift", "приїде пізніше": "arrives later", "без часу прибуття": "no arrival time", "Усі нерозвантажені трейлери (": "All trailers not unloaded yet (", "): коли їх можна розвантажити": "): when they can be unloaded", "Розвантажується, а в Unit ETA досі «": "Being unloaded, but Unit ETA still says \"", "» замість YARD": "\" instead of YARD", " рядків трейлера UNLOADED, в інших статус порожній. Трейлер ще не вважається розвантаженим": " rows of the trailer are UNLOADED, the others have no status. The trailer is not counted as unloaded yet", "Темп порахую після першої години зміни.": "Pace will show after the first hour of the shift.", "Не встигаєте": "Behind", "Встигаєте": "On track", "темп ": "pace ", " (за ": " (", " ще жодного)": " and none yet)", " закриєте ≈": " you close ≈", ", залишиться ~": ", ~", ". Щоб встигнути, треба ≈": " left. To make it you need ≈", "треба ": "need ", "/год": "/h", "Скільки трейлерів на годину треба до кінця зміни, щоб закрити план": "Trailers per hour needed until the end of the shift to close the plan", "Не встигаєте ~": "Behind by ~", " в роботі → ~": " in work → ~", " закриєте до ": " done by ", " (перший ~": " (first ~", "з ": "of ", " решти встигнете ще ~": " others, ~", "разом ≈": "total ≈", "Один трейлер ≈ ": "One trailer ≈ ", " (медіана з ": " (median of ", " трейлерів": " trailers", ", з поправкою на палети": ", adjusted for pallets", " (історії ще немає, взято 2.5 год)": " (no history yet, 2.5 h assumed)", " · одночасно в роботі ": " · in work at once ", "Попередня зміна": "Previous shift", "розвантажено ": "unloaded ", "Останні пошуки": "Recent searches", "Прибрати з історії": "Remove from history", "Перейти до трейлера ": "Go to trailer ", "Розвант.": "Unload", "Відвант.": "Ship", "Перевірка": "Check", "плану": "of plan", "план порожній": "plan empty", " пал. розвантажено": " plt unloaded", "у роботі": "in work", "в дорозі до ": "en route by ", "приїдуть пізніше": "arrive later", "Зміна почнеться о ": "Shift starts at ", "прогноз ≈": "forecast ≈", "Ризик −": "Risk −", "останній старт, щоб встигнути: ": "last start to make it: ", "нові старти вже на наступну зміну (трейлер ≈ ": "new starts belong to the next shift (a trailer ≈ ", "Аналітика": "Analytics", "фактичний темп, трейл./год": "actual pace, trl/h", "план ": "plan ", "Одночасно розвантажують: ": "Unloading at once: ", " (задано вручну)": " (set by hand)", " (найбільше за зміну)": " (most this shift)", " (за замовчуванням)": " (default)", "скинути": "reset", "Тут значення не зберігається": "Not saved here", "Відвантаження: ": "Outbound: ", " вантажів завантажено в доставку за зміну (LOADED / CH)": " loads loaded for delivery this shift (LOADED / CH)", "немає даних (сторінку тоді не відкривали або зміна не працювала)": "no data (the page was not open then, or the shift did not work)", " (стандартно)": " (standard)", " · найбільше одночасно за зміну: ": " · most at once this shift: ", "вантажів завантажено в доставку за зміну (LOADED / CH)": "loads loaded for delivery this shift (LOADED / CH)"};
 function yqT(s) { return YQ_LANG === 'en' && Object.prototype.hasOwnProperty.call(YQ_EN, s) ? YQ_EN[s] : s; }
 (function trStatic() {
   if (YQ_LANG !== 'en') return;
@@ -1683,7 +1885,8 @@ window.claude = (function () {
       /* A trailer arrives once: when it is listed in two weekly sheets, the earliest window is the real one. */
       if (g.etaEnd && (!t.etaEnd || (g.etaStart || g.etaEnd) < (t.etaStart || t.etaEnd))) { t.etaEnd = g.etaEnd; t.etaStart = g.etaStart || g.etaEnd; }
       if (/^(OFFLOADING|UNLOADING|IN PROGRESS)$/i.test(g.ustatus)) t.working = true;
-      if (/^UNLOADED$/i.test(g.ustatus)) t.unloaded = true; /* one trailer, several day rows: any UNLOADED means it is empty */
+      /* one trailer, several rows: it is empty only when every one of its rows says UNLOADED */
+      t.nRows = (t.nRows || 0) + 1; if (/^UNLOADED$/i.test(g.ustatus)) t.nUnl = (t.nUnl || 0) + 1;
       if (g.hot) { t.hot = true; if (!t.hotReason) t.hotReason = g.hotReason; }
       g.notes.forEach(function (n) { if (t.notes.indexOf(n) < 0) t.notes.push(n); });
       if (t.days.indexOf(g.day) < 0) t.days.push(g.day);
@@ -1718,6 +1921,10 @@ window.claude = (function () {
     });
     return order.map(function (k) {
       var t = map[k];
+      t.unloaded = !!t.nRows && t.nUnl === t.nRows;
+      t.partUnl = !t.unloaded && t.nUnl > 0; /* some rows UNLOADED, others not yet */
+      /* A trailer that is being unloaded is on the yard, whatever Unit ETA still says. */
+      if (t.working && !t.unloaded && !t.yard) { t.yard = true; t.noYardMark = true; }
       t.ships.forEach(function (s) {
         var real = (s.parts || []).filter(function (x) { return !x.ignore; });
         var sumP = real.length ? real.reduce(function (q, x) { return q + (x.pallets || 0); }, 0) : s.pallets;
@@ -2022,6 +2229,7 @@ window.claude = (function () {
     r.appendChild(top);
     var nm = el('div', 'c-name');
     nm.appendChild(el('span', 'pro', s.pro));
+    if (s.hot) nm.appendChild(el('span', 'hotpill', 'HOT'));
     if (s.customer) nm.appendChild(el('span', 'cust', ' · ' + s.customer));
     r.appendChild(nm);
     var ic = instrChips(s.note); if (ic) r.appendChild(ic);
@@ -2048,7 +2256,11 @@ window.claude = (function () {
       var oth = el('div', 'others');
       s.others.forEach(function (o) {
         var ro = el('div', 'oth');
-        ro.appendChild(el('span', 'oth-trip', o.trip));
+        if (o.t) {
+          var ob = el('button', 'oth-trip oth-go', o.trip); ob.type = 'button'; ob.title = yqT('Перейти до трейлера ') + o.trip;
+          ob.addEventListener('click', function (e) { e.stopPropagation(); goTo(o.t); });
+          ro.appendChild(ob);
+        } else ro.appendChild(el('span', 'oth-trip', o.trip));
         ro.appendChild(el('span', 'oth-pal', o.pallets + yqT(' пал.')));
         ro.appendChild(el('span', 'oth-st' + (o.state === yqT('розвантажено') ? ' done' : ''), o.state + (o.storage ? ' · ' + storLabel(o.storage) : o.state === yqT('розвантажено') ? yqT(' · Storage не вказано') : '')));
         oth.appendChild(ro);
@@ -2285,15 +2497,31 @@ window.claude = (function () {
     $('viewCheck').hidden = state.tab !== 'check';
     $('viewDone').hidden = state.tab !== 'done';
     var doneN = renderDone(all, inTerm);
-    var tb = $('tabs'); tb.textContent = '';
+    /* Expanding-label tabs: the active tab opens into a pill with its name, the others shrink to an icon with a count.
+       The buttons are built once and only updated, so the width change animates. */
+    var tb = $('tabs');
     [['unload', yqT('Розвантаження'), null], ['ship', yqT('До відвантаження'), list.length], ['check', yqT('Перевірка борди'), chk.length], ['done', yqT('Готово'), doneN]].forEach(function (d) {
-      var b = el('button', 'chip' + (d[0] === 'ship' && urgent.length ? ' warn' : ''), d[1]);
-      b.type = 'button'; b.setAttribute('aria-pressed', state.tab === d[0] ? 'true' : 'false');
-      if (d[2] !== null) b.appendChild(el('small', null, String(d[2])));
-      if (d[0] === 'ship' && fresh.length && state.tab !== 'ship') b.appendChild(el('span', 'newtag', yqT('нових ') + fresh.length));
-      b.addEventListener('click', function () { state.tab = d[0]; render(); });
-      tb.appendChild(b);
+      var b = tb.querySelector('[data-k="' + d[0] + '"]');
+      if (!b) {
+        b = el('button', 'chip tabx'); b.type = 'button'; b.setAttribute('data-k', d[0]);
+        b.innerHTML = TAB_ICONS[d[0]];
+        var lw = el('span', 'tx-l'); lw.appendChild(el('span', 'tx-lt', d[1])); lw.appendChild(el('span', 'tx-ls', TAB_SHORT[d[0]])); lw.appendChild(el('small', 'tx-n')); b.appendChild(lw);
+        b.appendChild(el('span', 'tx-badge'));
+        b.addEventListener('click', function () { state.tab = d[0]; render(); });
+        tb.appendChild(b);
+      }
+      var on = state.tab === d[0], nNew = d[0] === 'ship' && !on ? fresh.length : 0;
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.classList.toggle('warn', d[0] === 'ship' && urgent.length > 0);
+      b.querySelector('.tx-n').textContent = d[2] !== null ? String(d[2]) : '';
+      var bd = b.querySelector('.tx-badge');
+      bd.textContent = nNew ? String(nNew) : d[2] ? String(d[2]) : '';
+      bd.classList.toggle('hot', !!nNew);
+      bd.hidden = on || !bd.textContent;
+      b.title = d[1] + (d[2] !== null ? ' · ' + d[2] : '') + (nNew ? ' · ' + yqT('нових ') + nNew : '');
+      b.setAttribute('aria-label', b.title);
     });
+    placeNotch(tb);
     var al = $('alert'); al.textContent = '';
     var chNew = recentChanges(24 * 3600000).filter(function (c) { return c.at > seenChanges(); });
     try { document.title = (urgent.length || chNew.length ? '(!) ' : '') + 'Yard Queue'; } catch (e) {}
@@ -2312,6 +2540,7 @@ window.claude = (function () {
       li.appendChild(top);
       var nm = el('div', 'c-name');
       nm.appendChild(el('span', 'pro', s.pro));
+      if (s.hot) nm.appendChild(el('span', 'hotpill', 'HOT'));
       if (s.customer) nm.appendChild(el('span', 'cust', ' · ' + s.customer));
       li.appendChild(nm);
       var icS = instrChips(s.note); if (icS) li.appendChild(icS);
@@ -2338,6 +2567,37 @@ window.claude = (function () {
     if (state.tab === 'ship' && list.length) saveSeen(list.map(function (x) { return x.s.pro; }));
   }
 
+  /* Floating notch: a ball above the tab bar carries the active tab's icon and hops to the tab you pick;
+     the bar has a curved cut-out under it. The ball follows the icon frame by frame, so it stays put while labels open and close. */
+  var notchX = null, notchAnim = 0;
+  function placeNotch(tb) {
+    tb.classList.add('notchbar');
+    var ball = tb.querySelector('.nball');
+    if (!ball) { ball = el('div', 'nball'); ball.setAttribute('aria-hidden', 'true'); tb.appendChild(ball); }
+    var act = tb.querySelector('.tabx[aria-pressed="true"]'); if (!act) return;
+    var k = act.getAttribute('data-k');
+    if (ball.getAttribute('data-k') !== k) { ball.innerHTML = TAB_ICONS[k]; ball.setAttribute('data-k', k); }
+    var target = function () { var r = act.getBoundingClientRect(), tr = tb.getBoundingClientRect(); return r.left - tr.left + r.width / 2 + tb.scrollLeft; };
+    var set = function (x, hop) { ball.style.transform = 'translate(' + (x - 17) + 'px,' + (-hop) + 'px)'; tb.style.setProperty('--nx', x + 'px'); };
+    if (notchX === null || matchMedia('(prefers-reduced-motion: reduce)').matches) { notchX = target(); set(notchX, 0); return; }
+    var from = notchX, t0 = performance.now(), dur = 520, id = ++notchAnim;
+    if (Math.abs(target() - from) < 1) { set(target(), 0); return; }
+    (function step(now) {
+      if (id !== notchAnim) return;
+      var t = Math.min(1, (now - t0) / dur), e = t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      var to = target(), x = from + (to - from) * e;
+      notchX = x; set(x, Math.sin(Math.PI * t) * 9);
+      if (t < 1) requestAnimationFrame(step); else { notchX = to; set(to, 0); }
+    })(t0);
+  }
+  window.addEventListener('resize', function () { var tb = $('tabs'); if (tb && tb.querySelector('.nball')) { notchX = null; placeNotch(tb); } });
+  var TAB_SHORT = { unload: yqT('Розвант.'), ship: yqT('Відвант.'), check: yqT('Перевірка'), done: yqT('Готово') };
+  var TAB_ICONS = {
+    unload: '<svg class="tx-i" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="13" height="11" rx="1.5"/><path d="M15.5 9h3.2l2.8 3.2V16h-6"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="17.5" cy="17.5" r="1.8"/><path d="M9 7.5v5M6.8 10.5 9 12.7l2.2-2.2"/></svg>',
+    ship: '<svg class="tx-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></svg>',
+    check: '<svg class="tx-i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M8.5 12.5l2.3 2.3 4.7-4.8"/></svg>',
+    done: '<svg class="tx-i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m7.8 12.3 2.8 2.8 5.6-5.8"/></svg>'
+  };
   function termOf(t) { return String(t.trip).split('-')[0].toUpperCase(); }
   var TERM_COLORS = { RNO: 1, SBT: 1, SCK: 1 };
   function termCls(t) { var k = termOf(t); return 't-' + (TERM_COLORS[k] ? k.toLowerCase() : 'other'); }
@@ -2355,6 +2615,8 @@ window.claude = (function () {
       if (t.allLoaded) return;
       var sam = state.sam[t.trip.toUpperCase()];
       if (t.noTrip) out.push({ lvl: 'amber', trip: t.trip, text: t.ships.map(function (x) { return x.pro; }).join(', ') + yqT(': у рядку вантажу порожній Trip#'), where: whereOf(t.sheet, t.row) });
+      if (t.partUnl && !t.working) out.push({ lvl: 'amber', trip: t.trip, text: t.nUnl + yqT(' з ') + t.nRows + yqT(' рядків трейлера UNLOADED, в інших статус порожній. Трейлер ще не вважається розвантаженим'), where: whereOf(t.sheet, t.row) });
+      if (t.noYardMark) out.push({ lvl: 'amber', trip: t.trip, text: yqT('Розвантажується, а в Unit ETA досі «') + t.eta + yqT('» замість YARD'), where: whereOf(t.sheet, t.row) });
       if (!t.yard && !t.unloaded && !t.eta) out.push({ lvl: 'amber', trip: t.trip, text: yqT('Немає Unit ETA / Deramp: невідомо, де трейлер'), where: whereOf(t.sheet, t.row) });
       if (!t.yard && !t.unloaded && t.etaEnd && t.etaEnd < now && !(sam && sam.eta > now)) out.push({ lvl: 'red', trip: t.trip, text: 'ETA ' + fmtEta(t) + yqT(' минув, а YARD не відмічено'), where: whereOf(t.sheet, t.row) });
       if (!t.yard && !t.unloaded && t.eta && !/^PN$/i.test(t.eta) && !t.etaEnd) out.push({ lvl: 'amber', trip: t.trip, text: 'ETA «' + t.eta + yqT('» не вдалося прочитати як час'), where: whereOf(t.sheet, t.row) });
@@ -2503,10 +2765,13 @@ window.claude = (function () {
     var out = [];
     for (var i = 0; i < 8; i++) {
       var day = new Date(d); day.setDate(d.getDate() + i);
-      var a = new Date(day); a.setHours(TL_SHIFT_H[0], 0, 0, 0);
-      var b = new Date(day); b.setHours(TL_SHIFT_H[1], 0, 0, 0);
+      var wd = day.getDay();
+      var a = new Date(day); a.setHours(wd === 0 ? 8 : TL_SHIFT_H[0], 0, 0, 0);
+      var b = new Date(day); b.setHours(wd === 0 ? 20 : TL_SHIFT_H[1], 0, 0, 0);
       var c = new Date(day); c.setDate(day.getDate() + 1); c.setHours(TL_SHIFT_H[0], 0, 0, 0);
-      [[a.getTime(), b.getTime(), false], [b.getTime(), c.getTime(), true]].forEach(function (w) { if (w[1] > from && w[0] < to) out.push({ s: w[0], e: w[1], night: w[2] }); });
+      /* Sunday: one shift 08:00-20:00 and no night after it */
+      var ws = wd === 0 ? [[a.getTime(), b.getTime(), false]] : [[a.getTime(), b.getTime(), false], [b.getTime(), c.getTime(), true]];
+      ws.forEach(function (w) { if (w[1] > from && w[0] < to) out.push({ s: w[0], e: w[1], night: w[2] }); });
     }
     return out;
   }
@@ -2732,6 +2997,244 @@ window.claude = (function () {
     if (tk.unit && tk.truck) w.appendChild(document.createTextNode(' · '));
     if (tk.truck) { w.appendChild(document.createTextNode(yqT('трак '))); w.appendChild(num(tk.truck)); }
     return w;
+  }
+  /* Overview: how the current shift is going (from the times the page recorded) and how far each loading-day block is
+     (from the board itself: how many of the block's trailers are already UNLOADED). */
+  /* Overview of the shift. Always visible: the plan (done / plan), one bar, clickable counts that list the trailers,
+     and one risk line. "Аналітика" opens the hours chart, pace, forecast inputs (incl. how many people unload at once),
+     the previous shift and outbound loads. */
+  var ovPick = null, DEFAULT_CREW = 4;
+  function saveShifts() {
+    if (!state.db || window.YQ_GH) return;
+    clearTimeout(state.shiftSaveT);
+    state.shiftSaveT = setTimeout(function () {
+      var m = {}, keep = Date.now() - 14 * 86400000;
+      Object.keys(state.shifts || {}).forEach(function (k) { if (+k > keep) m[k] = state.shifts[k]; });
+      state.db.doc('board/shifts').set({ map: m }).catch(function () {});
+    }, 1500);
+  }
+  function renderOverview(allT, now) {
+    var box = $('ovBox'); if (!box) return; box.textContent = '';
+    var H1 = 3600000;
+    var sh = shiftsIn(now - 1, now + 1).filter(function (x) { return x.s <= now && now < x.e; })[0], upcoming = false;
+    if (!sh) { sh = shiftsIn(now, now + 48 * H1).filter(function (x) { return x.s > now; })[0]; upcoming = true; }
+    if (!sh) { box.hidden = true; return; }
+    var inT = {}; allT.forEach(function (t) { inT[t.trip.toUpperCase()] = t; });
+    var evT = (state.ev && state.ev.trips) || {}, evL = (state.ev && state.ev.loads) || {}, hasEv = !!state.ev && !!state.ev.lastSeen;
+    var done = upcoming ? [] : Object.keys(evT).filter(function (k) { var r = evT[k]; return r.unl && r.unl >= sh.s && r.unl <= now && inT[k] && inT[k].unloaded; });
+    var donePal = done.reduce(function (a, k) { return a + (inT[k].pallets || 0); }, 0);
+    var working = allT.filter(function (t) { return t.working && !t.unloaded && !t.noTrip; });
+    var seenL = {}; if (!upcoming) allT.forEach(function (t) { t.ships.forEach(function (sp) { var q = evL[sp.pro]; if (q && q.ld && q.ld >= sh.s && q.ld <= now) seenL[sp.pro] = 1; }); });
+    var loadsDone = Object.keys(seenL).length;
+    var samFresh = function (t) { var sm = state.sam && state.sam[t.trip.toUpperCase()]; return sm && sm.eta && now - (sm.read || 0) < SAM_STALE_MS ? sm.eta : null; };
+    var arrOf = function (t) { return samFresh(t) || t.etaStart || t.etaEnd || null; };
+    var cut = sh.e - H1; /* a trailer counts for this shift if it arrives at least an hour before the end */
+    var free = allT.filter(function (t) { return !t.noTrip && !t.unloaded; });
+    var pYard = free.filter(function (t) { return t.yard && !t.working; });
+    var pArr = free.filter(function (t) { if (t.yard || t.working) return false; var a = arrOf(t); return a && a < cut; });
+    var pAfter = free.filter(function (t) { if (t.yard || t.working) return false; var a = arrOf(t); return a && a >= cut; });
+    var pNone = free.filter(function (t) { return !t.yard && !t.working && !arrOf(t); });
+    [pArr, pAfter].forEach(function (l) { l.sort(function (x, y) { return arrOf(x) - arrOf(y); }); });
+    var pDone = done.length, pRun = working.length;
+    var plan = pDone + pRun + pYard.length + pArr.length;
+
+    /* how long one trailer takes: the page's own history, start -> UNLOADED, optionally per pallet */
+    var hist = [];
+    Object.keys(evT).forEach(function (k) {
+      var r = evT[k], st0 = r.off ? (r.offFrom ? (r.off + r.offFrom) / 2 : r.off) : null;
+      if (!st0 || !r.unl || r.unl <= st0) return;
+      var d0 = r.unl - (r.unlFrom ? (r.unl - r.unlFrom) / 2 : 0) - st0;
+      if (d0 < 0.3 * H1 || d0 > 10 * H1) return;
+      hist.push({ d: d0, p: inT[k] ? inT[k].pallets || 0 : 0 });
+    });
+    var med = function (a) { if (!a.length) return null; a = a.slice().sort(function (x, y) { return x - y; }); var m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+    var D = med(hist.map(function (x) { return x.d; })) || 2.5 * H1;
+    var withP = hist.filter(function (x) { return x.p > 0; }), perPal = withP.length >= 6 ? med(withP.map(function (x) { return x.d / x.p; })) : null;
+    var durOf = function (t) { return perPal && t.pallets ? Math.max(0.75 * H1, Math.min(6 * H1, perPal * t.pallets)) : D; };
+    var startOf = function (r) { return r.off ? (r.offFrom ? (r.off + r.offFrom) / 2 : r.off) : (r.pre === 'OFFLOADING' && r.since ? r.since : null); };
+
+    /* how many trailers were unloaded at the same time this shift (the most seen), unless the shift lead set it */
+    var maxObs = 0;
+    if (!upcoming) {
+      var pts = [];
+      Object.keys(evT).forEach(function (k) {
+        var r = evT[k], a = startOf(r); if (!a) return;
+        var b = r.unl && r.unl > a ? r.unl : (inT[k] && inT[k].working ? now : null); if (!b) return;
+        a = Math.max(a, sh.s); b = Math.min(b, now); if (b <= a) return;
+        pts.push([a, 1], [b, -1]);
+      });
+      pts.sort(function (x, y) { return x[0] - y[0] || x[1] - y[1]; });
+      var cur = 0; pts.forEach(function (p) { cur += p[1]; if (cur > maxObs) maxObs = cur; });
+    }
+    state.shifts = state.shifts || {};
+    var rec = state.shifts[sh.s] || null;
+    var crewSet = rec && rec.crew ? rec.crew : 0;
+    /* what the shift lead set wins, even below the number marked OFFLOADING on the board */
+    var crew = crewSet || DEFAULT_CREW; /* the shift's standard: 4 people unloading at once */
+
+    /* forecast: trailers in work finish at start + duration; each freed person takes the next trailer that is here */
+    var doors = working.map(function (t) {
+      var a = startOf(evT[t.trip.toUpperCase()] || {}) || now - D / 2;
+      return { t: t, end: Math.max(now + 10 * 60000, a + durOf(t)) };
+    });
+    var runFin = doors.filter(function (x) { return x.end <= sh.e; }).length;
+    var lanes = doors.map(function (x) { return x.end; });
+    var t0 = upcoming ? sh.s : now;
+    while (lanes.length < crew) lanes.push(t0);
+    var waiting = pYard.map(function (t) { return { t: t, a: t0 }; }).concat(pArr.map(function (t) { return { t: t, a: Math.max(t0, arrOf(t)) }; })).sort(function (x, y) { return x.a - y.a; });
+    var restFin = 0;
+    waiting.forEach(function (w) { lanes.sort(function (x, y) { return x - y; }); var st1 = Math.max(lanes[0], w.a), en = st1 + durOf(w.t); lanes[0] = en; if (en <= sh.e) restFin++; });
+    var fin = pDone + runFin + restFin, short = Math.max(0, plan - fin);
+    var lastStart = sh.e - D;
+
+    /* remember the plan and result for "previous shift" */
+    if (!upcoming && hasEv) {
+      var nr = Object.assign({}, rec || {}, { e: sh.e, plan: plan, done: pDone, pal: donePal, night: !!sh.night });
+      if (!rec || rec.plan !== nr.plan || rec.done !== nr.done || rec.pal !== nr.pal) { state.shifts = Object.assign({}, state.shifts); state.shifts[sh.s] = nr; rec = nr; saveShifts(); }
+    }
+
+    var anOpen = false; try { anOpen = localStorage.getItem('yq_ovan') === '1'; } catch (e) {}
+    /* head */
+    var hd = el('div', 'ov-head');
+    hd.appendChild(el('h2', null, yqT('Загальна картина')));
+    hd.appendChild(el('span', 'ov-shift', (sh.night ? '☾ ' + yqT('Нічна') : '☀ ' + yqT('Денна')) + ' ' + WD[new Date(sh.s).getDay()] + ' ' + hm(sh.s) + '–' + hm(sh.e) + ' · ' + (upcoming ? yqT('почнеться через ') + rel(sh.s - now) : yqT('до кінця ') + rel(sh.e - now))));
+    var anB = el('button', 'ov-anbtn', yqT('Аналітика') + (anOpen ? ' ▴' : ' ▾')); anB.type = 'button'; anB.setAttribute('aria-expanded', anOpen ? 'true' : 'false');
+    anB.addEventListener('click', function () { try { localStorage.setItem('yq_ovan', anOpen ? '0' : '1'); } catch (e) {} render(); });
+    hd.appendChild(anB);
+    box.appendChild(hd);
+
+    /* main: plan figure, bar, counts */
+    var mn = el('div', 'ov-main');
+    var kp = el('div', 'ov-kpi');
+    var big = el('div', 'ov-pbig');
+    big.appendChild(el('b', null, hasEv || upcoming ? String(pDone) : '—'));
+    big.appendChild(el('span', null, ' / ' + plan));
+    kp.appendChild(big);
+    var sub = el('div', 'ov-ksub');
+    sub.appendChild(el('span', 'ov-pct', plan ? Math.round(pDone / plan * 100) + '% ' + yqT('плану') : yqT('план порожній')));
+    if (hasEv && !upcoming) sub.appendChild(el('span', null, donePal + yqT(' пал. розвантажено')));
+    kp.appendChild(sub);
+    kp.title = yqT('план зміни: що вже на ярді або приїде щонайменше за годину до кінця зміни');
+    mn.appendChild(kp);
+    var rt = el('div', 'ov-right');
+    if (plan) {
+      var pb = el('div', 'ov-bar');
+      [['unl', pDone, yqT('розвантажено')], ['run', pRun, yqT('у роботі')], ['yard', pYard.length, yqT('на ярді')], ['road', pArr.length, yqT('в дорозі')]].forEach(function (q) {
+        if (!q[1]) return; var seg = el('i', 'seg ' + q[0]); seg.style.flex = String(q[1]); seg.title = q[2] + ': ' + q[1]; if (q[1] / plan > 0.06) seg.textContent = q[1]; pb.appendChild(seg);
+      });
+      rt.appendChild(pb);
+    }
+    var groups = [
+      { k: 'run', n: working, label: yqT('у роботі') },
+      { k: 'yard', n: pYard, label: yqT('на ярді') },
+      { k: 'road', n: pArr, label: yqT('в дорозі до ') + hm(cut) },
+      { k: 'after', n: pAfter, label: yqT('приїдуть пізніше') },
+      { k: 'none', n: pNone, label: yqT('без часу') }
+    ];
+    var chs = el('div', 'ov-chips');
+    groups.forEach(function (g) {
+      if (!g.n.length && g.k !== 'run') return;
+      var b = el('button', 'ov-ch' + (ovPick === g.k ? ' on' : '')); b.type = 'button';
+      b.appendChild(el('i', 'seg ' + g.k)); b.appendChild(el('b', null, String(g.n.length))); b.appendChild(document.createTextNode(' ' + g.label));
+      b.title = g.n.map(function (t) { return t.trip; }).join(', ') || yqT('немає');
+      b.disabled = !g.n.length;
+      b.addEventListener('click', function () { ovPick = ovPick === g.k ? null : g.k; render(); });
+      chs.appendChild(b);
+    });
+    rt.appendChild(chs);
+    mn.appendChild(rt);
+    box.appendChild(mn);
+    var pg = ovPick && groups.filter(function (g) { return g.k === ovPick; })[0];
+    if (pg && pg.n.length) {
+      var pk = el('div', 'ov-pick');
+      pg.n.forEach(function (t) {
+        var b2 = el('button', 'ov-trip'); b2.type = 'button'; b2.appendChild(document.createTextNode(t.trip));
+        var a = arrOf(t), extra = '';
+        if ((pg.k === 'road' || pg.k === 'after') && a) extra = (new Date(a).toDateString() === new Date(now).toDateString() ? '' : WD[new Date(a).getDay()] + ' ') + hm(a);
+        else if (pg.k === 'none' && t.eta) extra = t.eta;
+        else if (pg.k === 'run') { var s0 = startOf(evT[t.trip.toUpperCase()] || {}); if (s0) extra = yqT('з ') + hm(s0); }
+        if (t.pallets) extra += (extra ? ' · ' : '') + t.pallets + yqT(' пал.');
+        if (extra) b2.appendChild(el('small', null, extra));
+        b2.addEventListener('click', function () { goTo(t); });
+        pk.appendChild(b2);
+      });
+      box.appendChild(pk);
+    } else if (pg) ovPick = null;
+
+    /* one risk line */
+    var fc = el('div', 'ov-fc');
+    if (upcoming) {
+      fc.appendChild(document.createTextNode(yqT('Зміна почнеться о ') + hm(sh.s) + ' · ' + yqT('прогноз ≈') + fin + yqT(' з ') + plan));
+    } else if (!plan) {
+      fc.appendChild(document.createTextNode(yqT('На цю зміну поки нічого немає: ярд порожній і до кінця зміни ніхто не приїде.')));
+    } else {
+      fc.className = 'ov-fc ' + (short > 0 ? 'bad' : 'good');
+      fc.appendChild(el('b', null, short > 0 ? '⚠ ' + yqT('Ризик −') + short : '✓ ' + yqT('Встигаєте')));
+      fc.appendChild(document.createTextNode(' · ' + yqT('прогноз ≈') + fin + yqT(' з ') + plan + ' · '));
+      if (lastStart > now) fc.appendChild(document.createTextNode(yqT('останній старт, щоб встигнути: ') + hm(lastStart)));
+      else fc.appendChild(document.createTextNode(yqT('нові старти вже на наступну зміну (трейлер ≈ ') + durTxt(D) + ')'));
+    }
+    box.appendChild(fc);
+
+    if (!anOpen) { box.hidden = false; return; }
+    /* analytics */
+    var an = el('div', 'ov-an');
+    var row = el('div', 'ov-row');
+    var elH = Math.max(0, (Math.min(now, sh.e) - sh.s) / H1), shH = (sh.e - sh.s) / H1;
+    var stat = function (n, label, cls) { var c = el('div', 'ov-stat' + (cls ? ' ' + cls : '')); c.appendChild(el('b', null, String(n))); c.appendChild(el('span', null, label)); row.appendChild(c); };
+    stat(!upcoming && hasEv && elH >= 0.5 ? (pDone / elH).toFixed(1) : '—', yqT('фактичний темп, трейл./год') + (plan ? ' · ' + yqT('план ') + (plan / shH).toFixed(1) : ''), 'ok');
+    stat(hasEv && !upcoming ? loadsDone : '—', yqT('вантажів завантажено в доставку за зміну (LOADED / CH)'), 'out');
+    var hours = el('div', 'ov-hours'), HN = Math.round(shH), per = [];
+    for (var i = 0; i < HN; i++) per.push(0);
+    done.forEach(function (k) { var h = Math.floor((evT[k].unl - sh.s) / H1); if (h >= 0 && h < HN) per[h]++; });
+    var mx = Math.max(1, Math.max.apply(null, per));
+    per.forEach(function (n, i) {
+      var hs = sh.s + i * H1, col = el('div', 'ov-hcol' + (hs > now ? ' future' : ''));
+      var bar = el('i'); bar.style.height = (n ? 12 + n / mx * 44 : 3) + 'px'; col.appendChild(bar);
+      if (n) col.appendChild(el('em', null, String(n)));
+      col.appendChild(el('small', null, i % 2 ? '' : pad(new Date(hs).getHours())));
+      col.title = hm(hs) + '–' + hm(hs + H1) + ': ' + n + yqT(' трейл.');
+      hours.appendChild(col);
+    });
+    var hw = el('div', 'ov-hwrap'); hw.appendChild(el('span', 'ov-cap', yqT('Розвантажено по годинах'))); hw.appendChild(hours); row.appendChild(hw);
+    an.appendChild(row);
+    /* forecast inputs, with the number of people unloading at once */
+    var fp = el('div', 'ov-params');
+    fp.appendChild(el('span', null, yqT('Один трейлер ≈ ') + durTxt(D) + (hist.length ? yqT(' (медіана з ') + hist.length + yqT(' трейлерів') + (perPal ? yqT(', з поправкою на палети') : '') + ')' : yqT(' (історії ще немає, взято 2.5 год)'))));
+    var cw = el('span', 'ov-crew');
+    cw.appendChild(document.createTextNode(yqT('Одночасно розвантажують: ')));
+    var setCrew = function (v) { v = Math.max(1, Math.min(30, v)); state.shifts = Object.assign({}, state.shifts); state.shifts[sh.s] = Object.assign({}, state.shifts[sh.s] || { e: sh.e, night: !!sh.night }, { crew: v }); saveShifts(); render(); };
+    var mb = el('button', 'ov-cb', '−'); mb.type = 'button'; mb.addEventListener('click', function () { setCrew(crew - 1); });
+    var pbn = el('button', 'ov-cb', '+'); pbn.type = 'button'; pbn.addEventListener('click', function () { setCrew(crew + 1); });
+    cw.appendChild(mb); cw.appendChild(el('b', null, String(crew))); cw.appendChild(pbn);
+    cw.appendChild(el('small', null, (crewSet ? yqT(' (задано вручну)') : yqT(' (стандартно)')) + (maxObs ? yqT(' · найбільше одночасно за зміну: ') + maxObs : '')));
+    if (crewSet) { var rb = el('button', 'ov-cr', yqT('скинути')); rb.type = 'button'; rb.addEventListener('click', function () { var r2 = Object.assign({}, state.shifts[sh.s]); delete r2.crew; state.shifts = Object.assign({}, state.shifts); state.shifts[sh.s] = r2; saveShifts(); render(); }); cw.appendChild(rb); }
+    fp.appendChild(cw);
+    if (!state.db || window.YQ_GH) cw.title = yqT('Тут значення не зберігається');
+    an.appendChild(fp);
+    /* outbound, separate from unloading */
+    /* previous shift */
+    var prevSh = shiftsIn(now - 48 * H1, now).filter(function (x) { return x.e <= (upcoming ? now : sh.s); }).pop();
+    if (prevSh) {
+      var pdone = Object.keys(evT).filter(function (k) { var r = evT[k]; return r.unl && r.unl >= prevSh.s && r.unl <= prevSh.e && !(r.unlUndo && r.unlUndo > r.unl); });
+      var prec = state.shifts[prevSh.s] || null;
+      var pN = Math.max(pdone.length, prec && prec.done ? prec.done : 0);
+      var pPal = prec && prec.done >= pdone.length ? prec.pal : pdone.reduce(function (a2, k) { return a2 + (inT[k] ? inT[k].pallets || 0 : 0); }, 0);
+      var pv = el('div', 'ov-prev');
+      pv.appendChild(el('span', 'ov-prevl', yqT('Попередня зміна')));
+      pv.appendChild(document.createTextNode((prevSh.night ? '☾ ' : '☀ ') + WD[new Date(prevSh.s).getDay()] + ' ' + hm(prevSh.s) + '–' + hm(prevSh.e) + ' · '));
+      if (!prec && !pN) pv.appendChild(document.createTextNode(yqT('немає даних (сторінку тоді не відкривали або зміна не працювала)')));
+      else {
+        pv.appendChild(document.createTextNode(yqT('розвантажено ')));
+        pv.appendChild(el('b', null, prec && prec.plan ? pN + yqT(' з ') + prec.plan : String(pN)));
+        pv.appendChild(document.createTextNode((prec && prec.plan ? ' (' + Math.round(pN / prec.plan * 100) + '%)' : '') + (pPal ? ' · ' + pPal + yqT(' пал.') : '')));
+      }
+      pv.title = pdone.join(', ');
+      an.appendChild(pv);
+    }
+    if (!hasEv) an.appendChild(el('div', 'ov-note', yqT('Час розвантаження сторінка записує сама, коли відкрита; тут цих даних поки немає.')));
+    box.appendChild(an);
+    box.hidden = false;
   }
   function tlMoreBtn(n, HRS) {
     var b = el('button', 'tl-more', tlOpt.more ? yqT('Згорнути ⌃') : yqT('Ще ') + n + yqT(' трейл.: приїдуть скоро, але почати лише пізніше ніж за ') + HRS + yqT(' год ⌄'));
@@ -3059,7 +3562,16 @@ window.claude = (function () {
     var toEl = function (id) { return jump(function () { var e2 = $(id); if (e2) e2.scrollIntoView({ behavior: 'smooth', block: 'start' }); }); };
     [[lateQ, yqT('на ярді вже запізнюємось'), 'hot', toEl('queue')], [hotQ, yqT('HOT / ASAP на ярді'), 'hot', toEl('queue')], [late.length, yqT('ETA минув, не на ярді'), 'hot', toEl('lateBox')],
      [noEta.length, yqT('без Unit ETA'), 'warn', toEl('noEtaBox')], [shortN, yqT('з нестачею палет'), 'warn', jump(function () { state.tab = 'check'; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); })]]
-      .forEach(function (x) { if (!x[0]) return; var c = el('button', 'sum ' + x[2]); c.type = 'button'; c.appendChild(el('b', null, String(x[0]))); c.appendChild(document.createTextNode(' ' + x[1] + ' ›')); c.addEventListener('click', x[3]); st.appendChild(c); });
+      .forEach(function (x) {
+        if (!x[0]) return;
+        /* compact: icon + number; the text slides out on hover, the full text is also the tooltip */
+        var c = el('button', 'sum mini ' + x[2]); c.type = 'button';
+        c.appendChild(el('i', 'sm-i', x[2] === 'hot' ? '!' : '▲'));
+        c.appendChild(el('b', null, String(x[0])));
+        c.appendChild(el('span', 'sm-t', x[1] + ' ›'));
+        c.title = x[0] + ' ' + x[1]; c.setAttribute('aria-label', c.title);
+        c.addEventListener('click', x[3]); st.appendChild(c);
+      });
     st.hidden = !st.childNodes.length || state.tab !== 'unload';
     setTimeout(function () { $('filterRow').hidden = !$('days').childNodes.length && st.hidden; }, 0);
 
@@ -3106,6 +3618,7 @@ window.claude = (function () {
     $('incomingBox').hidden = !incoming.length;
     incoming.forEach(function (t, i, arr) { ib.appendChild(rowFor(t, i + 1, now, arr)); });
 
+    renderOverview(allT, now);
     renderTimeline(pendingAll.concat(noEta).filter(function (t) { return !t.allLoaded; }), now);
     if (DOCKS_ON) renderSpot(working.concat(queue), now); else $('spotBox').hidden = true;
     renderSearch(all);
@@ -3268,12 +3781,7 @@ window.claude = (function () {
   });
   $('q').addEventListener('input', function () {
     renderSearch(build());
-    /* results sit right under the sticky bar: bring them into view when typing far down the page */
-    var qr = $('qres'), bar = document.querySelector('.stickybar');
-    if (qr && qr.childNodes.length && bar) {
-      var top = qr.getBoundingClientRect().top + window.scrollY - bar.offsetHeight - 12;
-      if (Math.abs(window.scrollY - top) > 40) window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
-    }
+    var qr = $('qres'); if (qr) qr.scrollTop = 0;
   });
   /* "/" focuses the search from anywhere; the magnifier opens the field on narrow screens */
   document.addEventListener('keydown', function (e) {
@@ -3281,9 +3789,39 @@ window.claude = (function () {
     var t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     e.preventDefault(); $('sbSearch').classList.add('open'); $('q').focus(); $('q').select();
   });
-  $('qbtn').addEventListener('click', function () { var b = $('sbSearch'); b.classList.toggle('open'); if (b.classList.contains('open')) $('q').focus(); });
-  $('q').addEventListener('blur', function () { if (!$('q').value) $('sbSearch').classList.remove('open'); });
-  $('q').addEventListener('keydown', function (e) { if (e.key === 'Escape') { $('q').value = ''; renderSearch(build()); } });
+  $('qbtn').addEventListener('click', function () { $('q').focus(); });
+  $('q').addEventListener('keydown', function (e) { if (e.key === 'Escape') { $('q').value = ''; renderSearch(build()); showQHist(); } if (e.key === 'Enter') saveQHist(); });
+  /* The last 5 searches, kept in this browser only. A query is saved on Enter, or once you stop typing for 2 s. */
+  function qhistGet() { try { return JSON.parse(localStorage.getItem('yq_qhist') || '[]').slice(0, 5); } catch (e) { return []; } }
+  function qhistSet(a) { try { localStorage.setItem('yq_qhist', JSON.stringify(a.slice(0, 5))); } catch (e) {} }
+  function saveQHist() {
+    var v = String($('q').value || '').trim(); if (v.length < 3) return;
+    var V = v.toUpperCase();
+    /* typing "G496" then "G49612F" keeps only the longer one */
+    var a = qhistGet().filter(function (x) { var X = x.toUpperCase(); return X !== V && V.indexOf(X) !== 0; });
+    a.unshift(v); qhistSet(a);
+  }
+  function showQHist() {
+    var box = $('qhist'); box.textContent = '';
+    var a = qhistGet();
+    if ($('q').value || !a.length || document.activeElement !== $('q')) { box.hidden = true; return; }
+    box.appendChild(el('div', 'qh-cap', yqT('Останні пошуки')));
+    a.forEach(function (v) {
+      var r = el('div', 'qh-row');
+      var b = el('button', 'qh-go', v); b.type = 'button';
+      b.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      b.addEventListener('click', function () { $('q').value = v; box.hidden = true; saveQHist(); $('q').dispatchEvent(new Event('input')); });
+      var x = el('button', 'qh-x', '×'); x.type = 'button'; x.title = yqT('Прибрати з історії');
+      x.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      x.addEventListener('click', function () { qhistSet(qhistGet().filter(function (y) { return y !== v; })); showQHist(); });
+      r.appendChild(b); r.appendChild(x); box.appendChild(r);
+    });
+    box.hidden = false;
+  }
+  var qhT = null;
+  $('q').addEventListener('input', function () { clearTimeout(qhT); qhT = setTimeout(saveQHist, 2000); showQHist(); });
+  $('q').addEventListener('focus', showQHist);
+  $('q').addEventListener('blur', function () { setTimeout(function () { $('qhist').hidden = true; }, 0); });
   setInterval(function () { if (!document.hidden && !state.busy) render(); }, 60000); /* keeps "data N min ago" and countdowns current */
   $('logBox').addEventListener('toggle', function () {
     if ($('logBox').open) saveChanges(Date.now()); else state.logOpen = false;
@@ -3595,6 +4133,7 @@ window.claude = (function () {
     samDb = db; pullSam();
     db.doc('board/events').onSnapshot(function (s) { if (s.exists) { state.ev = s.data(); render(); } }, function () {});
     db.doc('board/samsara').onSnapshot(function (s) { state.sam = (s.exists && s.data().map) || {}; render(); }, function () {});
+    db.doc('board/shifts').onSnapshot(function (s) { /* a plain copy: what the db hands over may be read-only */ try { state.shifts = JSON.parse(JSON.stringify((s.exists && s.data().map) || {})); } catch (e) { state.shifts = {}; } render(); }, function () {});
     state.db = db;
     db.collection('docks').onSnapshot(function (q) {
       var m = {}; q.docs.forEach(function (d) { m[d.id] = d.data(); });
