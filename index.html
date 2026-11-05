@@ -1746,6 +1746,9 @@ function yqT(s) { return YQ_LANG === 'en' && Object.prototype.hasOwnProperty.cal
   b.setAttribute('aria-label', b.title);
   b.addEventListener('click', function () { try { localStorage.setItem('yq_lang', YQ_LANG === 'en' ? 'uk' : 'en'); } catch (e) {} location.reload(); });
 })();
+window.YQ_TASKS_ON = true;
+/* the workers' link (?worker): no board at all, only their tasks and the published queue */
+window.YQ_WORKER = /[?&]worker\b/.test(location.search);
 /* ===== GitHub Pages build only =====
    Outside Claude there is no window.claude: this shim gives the page the same three capabilities it uses there.
    mcp       -> reads the board straight from Google Drive with the viewer's own Google account (OAuth, read-only).
@@ -1756,9 +1759,9 @@ function yqT(s) { return YQ_LANG === 'en' && Object.prototype.hasOwnProperty.cal
 window.YQ_GH = true;
 window.claude = (function () {
   var CLIENT_ID = '612992838874-27g3nl9ge0crvro8e20m2mda0d22u0nh.apps.googleusercontent.com';
-  var SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+  var SCOPE = window.YQ_WORKER ? 'https://www.googleapis.com/auth/userinfo.email' : 'https://www.googleapis.com/auth/drive.readonly' + (window.YQ_TASKS_ON ? ' https://www.googleapis.com/auth/userinfo.email' : '');
   var tok = null, exp = 0, gisP = null, signedOnce = false;
-  try { var c = JSON.parse(sessionStorage.getItem('yq_gtok') || 'null'); if (c && c.exp > Date.now() + 60000) { tok = c.t; exp = c.exp; signedOnce = true; } } catch (e) {}
+  try { var c = JSON.parse(sessionStorage.getItem('yq_gtok') || 'null'); if (c && c.exp > Date.now() + 60000 && (c.sc || '') === SCOPE) { tok = c.t; exp = c.exp; signedOnce = true; } } catch (e) {}
   try { signedOnce = signedOnce || localStorage.getItem('yq_gsigned') === '1'; } catch (e) {}
   function err(code, text, action) { return { code: code, ghText: text, ghAction: action }; }
   function loadGis() {
@@ -1786,7 +1789,7 @@ window.claude = (function () {
           callback: function (r) {
             if (!r || r.error || !r.access_token) return bad(err('consent_required', yqT('Вхід через Google скасовано або вікно заблоковане браузером.'), yqT('Увійти через Google')));
             tok = r.access_token; exp = Date.now() + ((+r.expires_in || 3600) - 60) * 1000; signedOnce = true;
-            try { sessionStorage.setItem('yq_gtok', JSON.stringify({ t: tok, exp: exp })); localStorage.setItem('yq_gsigned', '1'); } catch (e) {}
+            try { sessionStorage.setItem('yq_gtok', JSON.stringify({ t: tok, exp: exp, sc: SCOPE })); localStorage.setItem('yq_gsigned', '1'); } catch (e) {}
             ok(tok);
           },
           error_callback: function () { bad(err('consent_required', yqT('Вхід через Google скасовано або вікно заблоковане браузером.'), yqT('Увійти через Google'))); }
@@ -1821,6 +1824,9 @@ window.claude = (function () {
       return Promise.resolve({ status: 'saved' });
     }
   };
+  /* the worker-tasks module asks for the same Google sign-in (it proves who is calling the Apps Script) */
+  window.YQ_GH_TOK = function () { return tok && exp > Date.now() + 60000 ? tok : null; };
+  window.YQ_GH_TOKEN = token;
   /* can this Google account open that board? true / false; null when not signed in yet (no window pops up for this) */
   window.YQ_GH_CAN = function (fileId) {
     if (!(tok && exp > Date.now() + 60000)) return Promise.resolve(null);
@@ -1870,7 +1876,402 @@ window.claude = (function () {
   return { use: function (name) { return Promise.resolve(name === 'mcp' ? mcp : name === 'downloads' ? downloads : name === 'db' ? db : null); } };
 })();
 
+/* ===== GitHub Pages build only: worker tasks (Google Sheet «Yard Tasks» through Apps Script) =====
+   Supervisor: «👷 Призначити» on a trailer (1–2 people), «Команда» shows who is on what.
+   Worker: «Моє завдання» with Почав / Завершив, or «Взяти наступний» when there is no task.
+   The board itself is never written. */
+window.YQ_TASKS = (function () {
+  var API = 'https://script.google.com/macros/s/AKfycbzBIJtmURkUVRyiP62YU251kXdFxC7huavlulKZIwslBKiE6wI-TKGamm8xFSjAV9P7/exec';
+  if (!API || API.indexOf('__') === 0) return null;
+  var S = { me: null, workers: [], tasks: [], err: '', state: 'idle', ctx: null, pick: null, busy: false, sig: '', off: false };
+  var POLL_MS = 20000, WORKER = !!window.YQ_WORKER;
+  var T = function (s) { return typeof yqT === 'function' ? yqT(s) : s; };
+  function sh() { return window.YQ_TZ_SHIFT || 0; }
+  function loc() { return window.YQ_LOC ? YQ_LOC.id : 'MKM'; }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function hm(srv) { var d = new Date(srv + sh()); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function dur(msv) { var m = Math.max(0, Math.round(msv / 60000)); return Math.floor(m / 60) + T(' год ') + pad(m % 60) + T(' хв'); }
+  function first(n) { return String(n || '').split(/\s+/)[0]; }
+  function nameOf(e) { if (S.me && e === S.me.email) return S.me.name; var w = S.workers.filter(function (x) { return x.email === e; })[0]; return w ? w.name : String(e).split('@')[0]; }
+  var ERR = {
+    auth: 'Google-вхід не підтвердився для завдань. Оновіть сторінку і увійдіть ще раз.',
+    not_listed: '', forbidden: 'Немає прав на цю дію.', busy: 'Таблиця завдань зайнята, спробуйте ще раз.',
+    nothing_free: 'Вільних трейлерів на ярді зараз немає.', has_task: 'У вас уже є завдання.',
+    bad_workers: 'Виберіть 1 або 2 людей.', unknown_worker: 'Цієї людини немає у списку локації: ',
+    busy_worker: 'Вже почали інший трейлер: ', bad_status: 'Статус уже змінився, оновлюю.', not_found: 'Завдання не знайдено, оновлюю.',
+    server: 'Помилка скрипта: ', network: 'Немає зв\'язку з таблицею завдань.'
+  };
+  function errText(r) { var k = r && r.error || 'network'; var b = ERR[k] != null ? ERR[k] : k; return T(b) + (r && r.detail && /: $/.test(b) ? r.detail : ''); }
+
+  function call(action, data, interactive) {
+    var tok = window.YQ_GH_TOK && YQ_GH_TOK();
+    var getTok = tok ? Promise.resolve(tok) : interactive && window.YQ_GH_TOKEN ? YQ_GH_TOKEN() : Promise.reject({ error: 'no_token' });
+    return getTok.then(function (t) {
+      var body = Object.assign({ action: action, token: t, loc: WORKER ? (S.me ? S.me.loc : '') : loc() }, data || {});
+      /* text/plain keeps it a "simple" request: Apps Script answers without a CORS preflight */
+      return fetch(API, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow' });
+    }).then(function (r) { return r.json(); }, function (e) { throw e && e.error ? e : { error: 'network' }; })
+      .then(function (r) { if (!r || !r.ok) throw r || { error: 'network' }; return r; });
+  }
+
+  var WQ = { items: [], at: null };
+  function load(interactive) {
+    if (S.off) return Promise.resolve();
+    var p = S.me ? Promise.resolve() : call('me', {}, interactive).then(function (r) { S.me = r.me; S.workers = r.workers || []; });
+    return p.then(function () { return call('list', { days: 2 }); }).then(function (r) {
+      S.tasks = r.tasks || [];
+      if (WORKER) return call('queue', {}).then(function (q) { WQ.items = q.items || []; WQ.at = q.at; });
+    }).then(function () { S.err = ''; S.state = 'ok'; S.needSign = false; }).catch(function (e) {
+      if (e && e.error === 'no_token') { S.needSign = true; return; }
+      if (e && e.error === 'not_listed') { S.off = true; S.state = 'off'; S.offEmail = e.email || ''; return; }
+      S.err = errText(e);
+    });
+  }
+  function sigOf() { return JSON.stringify([S.tasks, S.err, S.me && S.me.email, WQ, S.needSign, S.off]); }
+  function refresh(interactive) {
+    return load(interactive).then(function () {
+      var s = sigOf();
+      if (s !== S.sig) { S.sig = s; if (S.ctx && !S.pick) S.ctx.rerender(); }
+    });
+  }
+  setInterval(function () { if (document.visibilityState === 'visible' && !S.busy && !S.pick) refresh(false); }, POLL_MS);
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') refresh(false); });
+
+  function act(action, data) {
+    S.busy = true; S.err = '';
+    return call(action, data, true).then(function (r) { return refresh(false).then(function () { return r; }); })
+      .catch(function (e) { S.err = errText(e); if (e && /bad_status|not_found|has_task/.test(e.error)) return refresh(false); if (S.ctx) S.ctx.rerender(); throw e; })
+      .then(function (r) { S.busy = false; return r; }, function (e) { S.busy = false; throw e; });
+  }
+
+  function activeFor(trip) { trip = String(trip).toUpperCase(); return S.tasks.filter(function (t) { return t.trip === trip && (t.status === 'assigned' || t.status === 'started'); })[0] || null; }
+  function doneFor(trip) { trip = String(trip).toUpperCase(); return S.tasks.filter(function (t) { return t.trip === trip && t.status === 'done'; }).sort(function (a, b) { return b.doneAt - a.doneAt; })[0] || null; }
+  function activeOfWorker(e) { return S.tasks.filter(function (t) { return (t.status === 'assigned' || t.status === 'started') && t.workers.indexOf(e) >= 0; })[0] || null; }
+  function stTxt(t) { return t.status === 'started' ? T('почав ') + hm(t.startedAt) : T('призначено ') + hm(t.assignedAt); }
+
+  /* ---------- styles ---------- */
+  var css = el('style');
+  css.textContent = [
+    '.tkbox{display:flex;flex-direction:column;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}',
+    '.tk-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.tk-hd h2{margin:0;font-size:15px}.tk-hd small{color:var(--muted);font-size:12.5px}',
+    '.tk-err{font-size:12.5px;color:var(--hot)}',
+    '.tk-team{display:flex;flex-wrap:wrap;gap:6px}',
+    '.tk-w{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface-2);border-radius:999px;padding:4px 10px;font-size:12.5px;color:var(--fg);cursor:default}',
+    '.tk-w b{font-weight:700}.tk-w.on{border-color:var(--accent)}.tk-w.on.st{background:color-mix(in srgb,var(--accent) 16%,var(--surface-2))}',
+    'button.tk-w{cursor:pointer;font:inherit;font-size:12.5px}.tk-w .tk-free{color:var(--muted)}.tk-w .tk-n{color:var(--muted);font-variant-numeric:tabular-nums}',
+    '.tk-my{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
+    '.tk-my .tk-trip{font:700 18px var(--font-body);background:none;border:0;color:var(--fg);padding:0;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}',
+    '.tk-my .tk-meta{color:var(--muted);font-size:13px}.tk-my .tk-acts{display:flex;gap:8px;margin-left:auto}',
+    '.tk-btn{font:700 14px var(--font-body);border-radius:10px;padding:10px 16px;border:1px solid var(--line);background:var(--surface-2);color:var(--fg);cursor:pointer;min-height:44px}',
+    '.tk-btn.pri{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}.tk-btn:disabled{opacity:.55;cursor:default}',
+    '.tk-chip{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;border-radius:999px;padding:2px 9px;border:1px solid var(--accent);color:var(--fg);background:color-mix(in srgb,var(--accent) 12%,transparent)}',
+    '.tk-chip.mine{background:var(--accent);color:var(--accent-fg)}',
+    '.tk-as{font:600 13px var(--font-body);border-radius:9px;padding:6px 12px;border:1px dashed var(--accent);background:transparent;color:var(--accent);cursor:pointer;align-self:flex-start;min-height:34px}',
+    '.tk-as:hover{background:color-mix(in srgb,var(--accent) 10%,transparent)}',
+    '.tk-pop{position:absolute;z-index:60;width:280px;max-width:calc(100vw - 24px);background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.22);padding:12px;display:flex;flex-direction:column;gap:8px}',
+    '.tk-pop h3{margin:0;font-size:14px}.tk-pop .tk-sub{font-size:12px;color:var(--muted)}',
+    '.tk-pop label{display:flex;align-items:center;gap:8px;font-size:13.5px;padding:6px 4px;border-radius:8px;cursor:pointer}.tk-pop label:hover{background:var(--surface-2)}',
+    '.tk-pop label small{margin-left:auto;color:var(--muted);font-size:11.5px;text-align:right}.tk-pop label.dis{opacity:.5;cursor:default}',
+    '.tk-pop .tk-row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}.tk-pop .tk-btn{min-height:36px;padding:7px 12px;font-size:13px}',
+    '.tk-pop .tk-btn.danger{color:var(--hot)}'
+  ].join('\n');
+  document.head.appendChild(css);
+
+  /* ---------- the assign picker ---------- */
+  var popEl = null;
+  function closePick() { if (popEl) popEl.remove(); popEl = null; S.pick = null; }
+  document.addEventListener('mousedown', function (ev) { if (popEl && !popEl.contains(ev.target) && !ev.target.closest('.tk-as')) closePick(); });
+  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closePick(); });
+  function openPick(btn, tr) {
+    closePick();
+    var cur = activeFor(tr.trip), chosen = cur ? cur.workers.slice() : [];
+    S.pick = tr.trip;
+    popEl = el('div', 'tk-pop'); popEl.setAttribute('role', 'dialog');
+    popEl.appendChild(el('h3', null, T('Хто розвантажує ') + tr.trip));
+    popEl.appendChild(el('div', 'tk-sub', T('До 2 людей на трейлер.') + (cur ? ' ' + T('Зараз: ') + stTxt(cur) + '.' : '')));
+    var list = el('div');
+    var msg = el('div', 'tk-err'); msg.hidden = true;
+    var redraw = function () {
+      list.textContent = '';
+      if (!S.workers.length) list.appendChild(el('div', 'tk-sub', T('У таблиці Workers немає людей цієї локації.')));
+      S.workers.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (w) {
+        var lb = el('label'), cb = el('input'); cb.type = 'checkbox'; cb.checked = chosen.indexOf(w.email) >= 0;
+        var full = !cb.checked && chosen.length >= 2;
+        cb.disabled = full; if (full) lb.className = 'dis';
+        cb.addEventListener('change', function () { if (cb.checked) chosen.push(w.email); else chosen = chosen.filter(function (x) { return x !== w.email; }); redraw(); });
+        lb.appendChild(cb); lb.appendChild(el('span', null, w.name));
+        var on = activeOfWorker(w.email);
+        lb.appendChild(el('small', null, on && on.trip !== String(tr.trip).toUpperCase() ? (on.status === 'started' ? T('розвантажує ') : T('призначено на ')) + on.trip : on ? T('тут') : T('вільний')));
+        list.appendChild(lb);
+      });
+    };
+    redraw();
+    popEl.appendChild(list); popEl.appendChild(msg);
+    var row = el('div', 'tk-row');
+    var go = function (force) {
+      if (!chosen.length) { msg.textContent = T('Виберіть 1 або 2 людей.'); msg.hidden = false; return; }
+      save.disabled = true; save.textContent = T('Зберігаю…');
+      var tk = tr.truck || {};
+      act('assign', { trip: tr.trip, workers: chosen, unit: tk.unit || '', pallets: tr.pallets || 0, loads: (tr.ships || []).length, force: !!force })
+        .then(function () { closePick(); if (S.ctx) S.ctx.rerender(); })
+        .catch(function (e) {
+          save.disabled = false; save.textContent = T('Зберегти');
+          msg.textContent = errText(e); msg.hidden = false;
+          if (e && e.error === 'busy_worker' && !force) { save.textContent = T('Все одно перевести'); save.onclick = function () { go(true); }; }
+        });
+    };
+    if (cur) {
+      var rm = el('button', 'tk-btn danger', T('Зняти')); rm.type = 'button';
+      rm.addEventListener('click', function () { rm.disabled = true; act('cancel', { id: cur.id }).then(function () { closePick(); if (S.ctx) S.ctx.rerender(); }, function (e) { rm.disabled = false; msg.textContent = errText(e); msg.hidden = false; }); });
+      row.appendChild(rm);
+    }
+    var cancel = el('button', 'tk-btn', T('Скасувати')); cancel.type = 'button'; cancel.addEventListener('click', closePick); row.appendChild(cancel);
+    var save = el('button', 'tk-btn pri', T('Зберегти')); save.type = 'button'; save.onclick = function () { go(false); }; row.appendChild(save);
+    popEl.appendChild(row);
+    document.body.appendChild(popEl);
+    var r = btn.getBoundingClientRect(), w = popEl.offsetWidth;
+    popEl.style.left = Math.max(12, Math.min(window.scrollX + r.left, window.scrollX + document.documentElement.clientWidth - w - 12)) + 'px';
+    popEl.style.top = (window.scrollY + r.bottom + 6) + 'px';
+  }
+
+  /* ---------- hook: one trailer tile ---------- */
+  function row(t, li, head, body) {
+    if (!S.me || t.noTrip) return;
+    var cur = activeFor(t.trip), mine = cur && cur.workers.indexOf(S.me.email) >= 0;
+    if (cur && (S.me.canManage || mine)) {
+      var c = el('span', 'tk-chip' + (mine ? ' mine' : ''), '👷 ' + (mine && cur.workers.length === 1 ? T('Ви') : cur.workers.map(function (e) { return e === S.me.email ? T('Ви') : first(nameOf(e)); }).join(', ')) + ' · ' + stTxt(cur));
+      head.appendChild(c);
+    }
+    var fin = !cur && !t.unloaded ? doneFor(t.trip) : null;
+    if (fin && (S.me.canManage || fin.workers.indexOf(S.me.email) >= 0)) {
+      var fc = el('span', 'tk-chip', T('✓ Розвантажили: ') + fin.workers.map(function (e) { return first(nameOf(e)); }).join(', ') + ' · ' + hm(fin.doneAt));
+      fc.title = T('Позначено в завданнях. На борді статус ще не UNLOADED.'); head.appendChild(fc);
+    }
+    if (S.me.canManage && !t.unloaded && !t.allLoaded && (t.yard || t.working)) {
+      var b = el('button', 'tk-as', cur ? T('👷 Змінити людей') : T('👷 Призначити')); b.type = 'button';
+      b.addEventListener('click', function (ev) { ev.stopPropagation(); if (S.pick === t.trip) closePick(); else openPick(b, Object.assign({ truck: (S.ctx && S.ctx.truckOf) ? S.ctx.truckOf(t) : {} }, t)); });
+      body.insertBefore(b, body.firstChild);
+    }
+  }
+
+  /* ---------- hook: the page rendered ---------- */
+  /* the supervisor's page keeps the workers' queue fresh: only trailer, pallets, loads and "start by" leave the page */
+  var pubSig = '', pubAt = 0;
+  function publish(ctx) {
+    if (!S.me || !S.me.canManage || !ctx.live) return;
+    var real = function (v) { return v == null ? null : v - sh(); };
+    var items = ctx.working.map(function (t) { return [t, 'work']; }).concat(ctx.queue.map(function (t) { return [t, 'yard']; }))
+      .filter(function (x) { return !x[0].allLoaded && !x[0].noTrip; }).map(function (x) {
+        var t = x[0], tk = ctx.truckOf ? ctx.truckOf(t) : {};
+        return { trip: t.trip, unit: tk.unit || '', pallets: t.pallets || 0, loads: t.ships.length, sb: real(ctx.startBy(t)), st: x[1], hot: !!t.hot, mbr: t.basis === 'ready' };
+      });
+    var sig = JSON.stringify(items), nowR = Date.now();
+    if (sig === pubSig && nowR - pubAt < 5 * 60000) return;
+    pubSig = sig; pubAt = nowR;
+    call('pub', { items: items }).catch(function () { pubSig = ''; });
+  }
+  function render(ctx) {
+    S.ctx = ctx;
+    try { publish(ctx); } catch (e) {}
+    if (!S.me && S.state === 'idle' && !S.off) { S.state = 'loading'; refresh(false).then(function () { if (S.state === 'loading') S.state = 'idle'; }); }
+    var box = document.getElementById('tkBox');
+    if (!box) { box = el('section', 'tkbox'); box.id = 'tkBox'; var ov = document.getElementById('ovBox'); ov.parentNode.insertBefore(box, ov); }
+    box.textContent = '';
+    if (!S.me) { box.hidden = !S.err; if (S.err) box.appendChild(el('div', 'tk-err', S.err)); return; }
+    box.hidden = false;
+    var now = Date.now(), shf = ctx.shift, inShift = function (srv) { return srv && shf && srv + sh() >= shf.s && srv + sh() < shf.e; };
+    var byTrip = {}; ctx.all.forEach(function (t) { byTrip[t.trip.toUpperCase()] = t; });
+
+    /* my task (everyone who is in the list can have one) */
+    var my = activeOfWorker(S.me.email);
+    var myDone = S.tasks.filter(function (t) { return t.status === 'done' && t.workers.indexOf(S.me.email) >= 0 && inShift(t.doneAt); });
+    if (S.me.role === 'worker' || my) {
+      var hd = el('div', 'tk-hd'); hd.appendChild(el('h2', null, T('Моє завдання')));
+      hd.appendChild(el('small', null, S.me.name + (myDone.length ? ' · ' + T('за зміну розвантажено: ') + myDone.length : '')));
+      box.appendChild(hd);
+      var m = el('div', 'tk-my');
+      if (my) {
+        var tb = el('button', 'tk-trip', my.trip); tb.type = 'button';
+        tb.addEventListener('click', function () { var tt = byTrip[my.trip]; if (tt) ctx.goTo(tt); });
+        m.appendChild(tb);
+        var bt = byTrip[my.trip];
+        m.appendChild(el('span', 'tk-meta', [my.unit ? T('Трейлер ') + my.unit : '', (bt ? bt.pallets : my.pallets) + T(' пал.'), (bt ? bt.ships.length : my.loads) + ' ' + T('вант.'),
+          my.workers.length > 1 ? T('з ') + my.workers.filter(function (e) { return e !== S.me.email; }).map(nameOf).join(', ') : '', stTxt(my)].filter(String).join(' · ')));
+        var acts = el('div', 'tk-acts');
+        if (my.status === 'assigned') {
+          var st = el('button', 'tk-btn pri', T('▶ Почав')); st.type = 'button'; st.disabled = S.busy;
+          st.addEventListener('click', function () { st.disabled = true; act('status', { id: my.id, status: 'started' }).then(ctx.rerender, ctx.rerender); });
+          acts.appendChild(st);
+        } else {
+          var dn = el('button', 'tk-btn pri', T('✓ Завершив')); dn.type = 'button'; dn.disabled = S.busy;
+          dn.addEventListener('click', function () { dn.disabled = true; act('status', { id: my.id, status: 'done' }).then(ctx.rerender, ctx.rerender); });
+          acts.appendChild(dn);
+        }
+        m.appendChild(acts);
+      } else {
+        var cands = candidates(ctx);
+        m.appendChild(el('span', 'tk-meta', cands.length ? T('Завдання немає. Наступний за пріоритетом: ') + cands[0].trip + ' · ' + cands[0].pallets + T(' пал.') : T('Завдання немає, і на ярді зараз нічого не чекає.')));
+        var acts2 = el('div', 'tk-acts');
+        var tk = el('button', 'tk-btn pri', T('Взяти наступний')); tk.type = 'button'; tk.disabled = S.busy || !cands.length;
+        tk.addEventListener('click', function () {
+          tk.disabled = true; tk.textContent = T('Беру…');
+          act('take', { candidates: cands }).then(function (r) { var tt = r && r.task && byTrip[r.task.trip]; ctx.rerender(); if (tt) setTimeout(function () { ctx.goTo(tt); }, 50); }, ctx.rerender);
+        });
+        acts2.appendChild(tk); m.appendChild(acts2);
+      }
+      box.appendChild(m);
+    }
+
+    /* the team (supervisor) */
+    if (S.me.canManage) {
+      var h2 = el('div', 'tk-hd'); h2.appendChild(el('h2', null, T('Команда')));
+      var openN = ctx.working.concat(ctx.queue).filter(function (t) { return !t.allLoaded && !activeFor(t.trip) && !doneFor(t.trip); }).length;
+      h2.appendChild(el('small', null, (openN ? T('без людей: ') + openN + T(' трейл. на ярді / в роботі') : T('усі трейлери на ярді мають людей')) + ' · ' + T('оновлюється кожні 20 с')));
+      box.appendChild(h2);
+      var team = el('div', 'tk-team');
+      S.workers.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (w) {
+        var on = activeOfWorker(w.email);
+        var dn = S.tasks.filter(function (t) { return t.status === 'done' && t.workers.indexOf(w.email) >= 0 && inShift(t.doneAt); });
+        var avg = dn.length ? dn.reduce(function (a, t) { return a + (t.doneAt - (t.startedAt || t.assignedAt)); }, 0) / dn.length : 0;
+        var c = el(on ? 'button' : 'span', 'tk-w' + (on ? ' on' + (on.status === 'started' ? ' st' : '') : ''));
+        if (on) { c.type = 'button'; c.addEventListener('click', function () { var tt = byTrip[on.trip]; if (tt) ctx.goTo(tt); }); }
+        c.appendChild(el('b', null, w.name));
+        c.appendChild(on ? el('span', null, on.trip + ' · ' + (on.status === 'started' ? T('з ') + hm(on.startedAt) : T('ще не почав'))) : el('span', 'tk-free', T('вільний')));
+        if (dn.length) c.appendChild(el('span', 'tk-n', '✓' + dn.length + ' · ⌀' + dur(avg)));
+        c.title = w.name + ': ' + (on ? on.trip + ' (' + stTxt(on) + ')' : T('вільний')) + (dn.length ? '. ' + T('За зміну розвантажено ') + dn.length + T(', в середньому ') + dur(avg) + '.' : '');
+        team.appendChild(c);
+      });
+      if (!S.workers.length) team.appendChild(el('span', 'tk-free', T('Додайте людей у аркуш Workers таблиці «Yard Tasks».')));
+      box.appendChild(team);
+    }
+    if (S.err) box.appendChild(el('div', 'tk-err', S.err));
+    if (!box.childNodes.length) box.hidden = true;
+  }
+  /* trailers on the yard waiting for unloading, in the page's own priority order, without people yet */
+  function candidates(ctx) {
+    return ctx.queue.filter(function (t) { return !t.allLoaded && !activeFor(t.trip) && !doneFor(t.trip); }).slice(0, 40).map(function (t) {
+      var tk = ctx.truckOf ? ctx.truckOf(t) : {};
+      return { trip: t.trip, unit: tk.unit || '', pallets: t.pallets || 0, loads: t.ships.length };
+    });
+  }
+
+  /* ---------- worker screen (link with ?worker): no board, only the queue the supervisor's page publishes ---------- */
+  function bootWorker() {
+    document.title = 'Yard Queue · ' + T('Працівник');
+    var root = el('main', 'wk-root');
+    Array.prototype.forEach.call(document.body.children, function (c) { if (c.tagName !== 'SCRIPT' && c.tagName !== 'STYLE') c.style.display = 'none'; });
+    document.body.appendChild(root);
+    var wcss = el('style');
+    wcss.textContent = [
+      '.wk-root{max-width:560px;margin:0 auto;padding:16px 16px 40px;display:flex;flex-direction:column;gap:14px;font-family:var(--font-body,system-ui);color:var(--fg)}',
+      '.wk-top{display:flex;align-items:center;gap:10px}.wk-top h1{margin:0;font-size:18px;letter-spacing:.02em;white-space:nowrap}.wk-top small{color:var(--muted)}',
+      '.wk-top .tk-btn{margin-left:auto;min-height:38px;padding:6px 12px}',
+      '.wk-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px}',
+      '.wk-card h2{margin:0;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}',
+      '.wk-trip{font:800 26px var(--font-body,system-ui);letter-spacing:.02em}',
+      '.wk-facts{display:flex;flex-wrap:wrap;gap:6px}.wk-facts span{background:var(--surface-2);border-radius:999px;padding:4px 10px;font-size:13px}',
+      '.wk-facts .late{color:var(--hot)}.wk-card .tk-btn{width:100%;min-height:52px;font-size:16px}',
+      '.wk-q{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}',
+      '.wk-q li{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}',
+      '.wk-q li.taken{opacity:.55}.wk-q li.mine{border-color:var(--accent)}',
+      '.wk-q .n{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--surface-2);font-size:12px;font-weight:700;flex:none}',
+      '.wk-q .m{display:flex;flex-direction:column;gap:2px;min-width:0}.wk-q .m b{font-size:15px}.wk-q .m small{color:var(--muted);font-size:12.5px}',
+      '.wk-q .r{margin-left:auto;text-align:right;font-size:12.5px;white-space:nowrap}.wk-q .r .late{color:var(--hot);font-weight:700}',
+      '.wk-tag{font-size:11px;border-radius:6px;padding:1px 6px;background:var(--surface-2);margin-left:6px}.wk-tag.hot{background:var(--hot-bg,#fde4e1);color:var(--hot)}',
+      '.wk-note{font-size:12.5px;color:var(--muted)}.wk-note.warn{color:var(--warn)}'
+    ].join('\n');
+    document.head.appendChild(wcss);
+    S.ctx = { rerender: draw };
+    function tzOf() { var L = window.YQ_LOCS && S.me && YQ_LOCS[S.me.loc]; return L ? L.tz : 'America/Chicago'; }
+    function realNow() { return Date.now() - sh(); }
+    function fmt(v) {
+      if (!v) return '—';
+      try {
+        var p = new Intl.DateTimeFormat('uk-UA', { timeZone: tzOf(), weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(v - 0));
+        return p.replace(/^./, function (c) { return c.toUpperCase(); });
+      } catch (e) { return hm(v); }
+    }
+    function ago(v) { var m = Math.round((realNow() - v) / 60000); return m < 1 ? T('щойно') : m < 60 ? m + T(' хв тому') : Math.floor(m / 60) + T(' год ') + (m % 60) + T(' хв тому'); }
+    function btn(txt, cls, fn) { var b = el('button', 'tk-btn ' + (cls || ''), txt); b.type = 'button'; b.disabled = S.busy; b.addEventListener('click', function () { b.disabled = true; fn(b); }); return b; }
+    function done() { draw(); }
+    function draw() {
+      root.textContent = '';
+      var top = el('div', 'wk-top'); top.appendChild(el('h1', null, 'Yard Queue'));
+      if (S.me) top.appendChild(el('small', null, S.me.name + ' · ' + S.me.loc));
+      if (S.me && !S.needSign) top.appendChild(btn(T('↻ Оновити'), '', function () { refresh(false).then(done, done); }));
+      root.appendChild(top);
+      if (S.off) {
+        var c0 = el('div', 'wk-card'); c0.appendChild(el('h2', null, T('Немає доступу')));
+        c0.appendChild(el('div', null, T('Пошти ') + (S.offEmail || '') + T(' немає у списку працівників. Попросіть супервайзера додати вас.')));
+        root.appendChild(c0); return;
+      }
+      if (!S.me || S.needSign) {
+        var c1 = el('div', 'wk-card'); c1.appendChild(el('h2', null, T('Вхід')));
+        c1.appendChild(el('div', null, T('Увійдіть своїм Google-акаунтом, щоб побачити завдання. Сторінка бачить лише вашу пошту.')));
+        c1.appendChild(btn(T('Увійти через Google'), 'pri', function () { refresh(true).then(done, done); }));
+        if (S.err) c1.appendChild(el('div', 'tk-err', S.err));
+        root.appendChild(c1); return;
+      }
+      var Q = WQ.items, byTrip = {}; Q.forEach(function (x) { byTrip[x.trip] = x; });
+      var my = activeOfWorker(S.me.email), since = realNow() - 12 * 3600000;
+      var myDone = S.tasks.filter(function (t) { return t.status === 'done' && t.workers.indexOf(S.me.email) >= 0 && t.doneAt >= since; });
+      var card = el('div', 'wk-card'); card.appendChild(el('h2', null, T('Моє завдання')));
+      if (my) {
+        var q = byTrip[my.trip] || {};
+        card.appendChild(el('div', 'wk-trip', my.trip));
+        var f = el('div', 'wk-facts');
+        [my.unit || q.unit ? T('Трейлер ') + (my.unit || q.unit) : '', (q.pallets || my.pallets) + T(' пал.'), (q.loads || my.loads) + ' ' + T('вант.')].filter(String).forEach(function (x) { f.appendChild(el('span', null, x)); });
+        if (q.sb) f.appendChild(el('span', q.sb < realNow() ? 'late' : '', T('почати до ') + fmt(q.sb)));
+        if (my.workers.length > 1) f.appendChild(el('span', null, T('разом з ') + my.workers.filter(function (e) { return e !== S.me.email; }).map(nameOf).join(', ')));
+        f.appendChild(el('span', null, my.status === 'started' ? T('почав ') + fmt(my.startedAt) : T('призначено ') + fmt(my.assignedAt)));
+        card.appendChild(f);
+        if (my.status === 'assigned') card.appendChild(btn(T('▶ Почав'), 'pri', function () { act('status', { id: my.id, status: 'started' }).then(done, done); }));
+        else card.appendChild(btn(T('✓ Завершив'), 'pri', function () { act('status', { id: my.id, status: 'done' }).then(done, done); }));
+      } else {
+        var free = Q.filter(function (x) { return x.st === 'yard' && !activeFor(x.trip) && !doneFor(x.trip); });
+        card.appendChild(el('div', null, free.length ? T('Завдання немає. Наступний за пріоритетом: ') + free[0].trip + ' · ' + free[0].pallets + T(' пал.') : T('Завдання немає, і вільних трейлерів на ярді зараз немає.')));
+        var tb = btn(T('Взяти наступний'), 'pri', function (b) { b.textContent = T('Беру…'); act('take', {}).then(done, done); });
+        if (!free.length) tb.disabled = true;
+        card.appendChild(tb);
+      }
+      if (myDone.length) card.appendChild(el('div', 'wk-note', T('За останні 12 год розвантажено: ') + myDone.length));
+      if (S.err) card.appendChild(el('div', 'tk-err', S.err));
+      root.appendChild(card);
+
+      var qc = el('div', 'wk-card'); qc.appendChild(el('h2', null, T('Черга на ярді') + ' · ' + Q.length));
+      var stale = !WQ.at || realNow() - WQ.at > 20 * 60000;
+      qc.appendChild(el('div', 'wk-note' + (stale ? ' warn' : ''), WQ.at ? T('Оновлено ') + ago(WQ.at) + (stale ? T('. Черга давно не оновлювалась: попросіть супервайзера відкрити Yard Queue.') : '') : T('Черги ще немає: її оновлює сторінка супервайзера.')));
+      var ol = el('ol', 'wk-q');
+      Q.forEach(function (x, i) {
+        var a = activeFor(x.trip), mine = my && my.trip === x.trip, fin = !a && doneFor(x.trip);
+        var li = el('li', mine ? 'mine' : a || fin ? 'taken' : '');
+        li.appendChild(el('span', 'n', String(i + 1)));
+        var m = el('div', 'm'), b = el('b', null, x.trip);
+        if (x.hot) b.appendChild(el('span', 'wk-tag hot', 'HOT'));
+        if (x.st === 'work') b.appendChild(el('span', 'wk-tag', T('в роботі')));
+        if (mine) b.appendChild(el('span', 'wk-tag', T('ваш')));
+        else if (a) b.appendChild(el('span', 'wk-tag', T('зайнято')));
+        else if (fin) b.appendChild(el('span', 'wk-tag', T('розвантажено')));
+        m.appendChild(b);
+        m.appendChild(el('small', null, [x.unit ? T('Трейлер ') + x.unit : '', x.pallets + T(' пал.'), x.loads + ' ' + T('вант.')].filter(String).join(' · ')));
+        li.appendChild(m);
+        var r = el('div', 'r');
+        if (x.sb) { r.appendChild(el('div', null, T('почати до'))); r.appendChild(el('div', x.sb < realNow() ? 'late' : '', fmt(x.sb))); }
+        li.appendChild(r); ol.appendChild(li);
+      });
+      qc.appendChild(ol);
+      root.appendChild(qc);
+    }
+    draw();
+    refresh(false).then(draw, draw);
+  }
+  if (WORKER) bootWorker();
+  return { row: row, render: render, _s: S };
+})();
+
 (function () {
+  if (window.YQ_WORKER) return;
   var FILE_ID = YQ_LOC.fileId;
   var XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   var WD = [yqT('Нд'), yqT('Пн'), yqT('Вт'), yqT('Ср'), yqT('Чт'), yqT('Пт'), yqT('Сб')];
@@ -2340,6 +2741,7 @@ window.claude = (function () {
     top.addEventListener('click', toggle);
     body.addEventListener('click', toggle);
     top.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openTrips[key] = d.hidden; setOpen(d.hidden); } });
+    if (window.YQ_TASKS) try { YQ_TASKS.row(t, li, head, body); } catch (e) {}
     return li;
   }
 
@@ -3884,6 +4286,10 @@ window.claude = (function () {
     incoming.forEach(function (t, i, arr) { ib.appendChild(rowFor(t, i + 1, now, arr)); });
 
     renderOverview(allT, now);
+    if (window.YQ_TASKS) try {
+      var tkSh = shiftsIn(now - 1, now + 1).filter(function (x) { return x.s <= now && now < x.e; })[0] || null;
+      YQ_TASKS.render({ all: allT, queue: queue, working: working, now: now, shift: tkSh, goTo: goTo, truckOf: truckOf, startBy: startBy, live: state.source === 'live' && state.term === 'all', rerender: render });
+    } catch (e) { console.error(e); }
     state.hereList = queue.map(function (t) { return { t: t }; }).concat(working.map(function (t) { return { t: t, run: true }; }));
     renderTimeline(pendingAll.concat(noEta).filter(function (t) { return !t.allLoaded; }), now);
     if (DOCKS_ON) renderSpot(working.concat(queue), now); else $('spotBox').hidden = true;
