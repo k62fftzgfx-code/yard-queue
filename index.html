@@ -1936,6 +1936,8 @@ window.YQ_TASKS = (function () {
     });
   }
   setInterval(function () { if (document.visibilityState === 'visible' && !S.busy && !S.pick) refresh(false); }, POLL_MS);
+  /* colours and minutes move on even when nothing changed in the table */
+  setInterval(function () { if (S.ctx && !S.pick && !S.busy && S.tasks.some(function (t) { return t.status === 'started'; })) S.ctx.rerender(); }, 60000);
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') refresh(false); });
 
   function act(action, data) {
@@ -1948,6 +1950,38 @@ window.YQ_TASKS = (function () {
   function activeFor(trip) { trip = String(trip).toUpperCase(); return S.tasks.filter(function (t) { return t.trip === trip && (t.status === 'assigned' || t.status === 'started'); })[0] || null; }
   function doneFor(trip) { trip = String(trip).toUpperCase(); return S.tasks.filter(function (t) { return t.trip === trip && t.status === 'done'; }).sort(function (a, b) { return b.doneAt - a.doneAt; })[0] || null; }
   function activeOfWorker(e) { return S.tasks.filter(function (t) { return (t.status === 'assigned' || t.status === 'started') && t.workers.indexOf(e) >= 0; })[0] || null; }
+  /* crews: A and B swap day/night every Monday; N is the permanent night crew, it works with whichever crew is on nights.
+     Sunday (one shift) is worked by that week's night crew. anchor = a Monday and the crew on days that week. */
+  var CREWS = { MKM: { anchor: [2026, 10, 2], day: 'B' } };
+  var CREW_NAME = { A: 'A', B: 'Б', N: T('нічна') };
+  function crewsOn(shf) {
+    var cfg = CREWS[loc()]; if (!cfg || !shf) return null;
+    var d = new Date(shf.s), wd = d.getDay();
+    var mon = new Date(d.getFullYear(), d.getMonth(), d.getDate() - (wd + 6) % 7);
+    var a = new Date(cfg.anchor[0], cfg.anchor[1], cfg.anchor[2]);
+    var weeks = Math.round((mon - a) / (7 * 86400000));
+    var day = weeks % 2 === 0 ? cfg.day : (cfg.day === 'A' ? 'B' : 'A'), night = day === 'A' ? 'B' : 'A';
+    var nightLike = shf.night || wd === 0;
+    return { set: nightLike ? [night, 'N'] : [day], label: nightLike ? T('бригада ') + CREW_NAME[night] + T(' + постійна нічна') : T('бригада ') + CREW_NAME[day] };
+  }
+  /* who to show: people of the current crews, anyone without a crew, and anyone busy right now */
+  function teamOf(all) {
+    var on = S.ctx && crewsOn(S.ctx.shift);
+    var list = S.workers.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+    if (!on || S.allCrew) return { list: list, hidden: 0, on: on };
+    var shown = list.filter(function (w) { return !w.crew || on.set.indexOf(w.crew) >= 0 || activeOfWorker(w.email); });
+    return { list: shown, hidden: list.length - shown.length, on: on };
+  }
+  function crewToggle(tm, after) {
+    if (!tm.on || (!tm.hidden && !S.allCrew)) return null;
+    var b = el('button', 'tk-all', S.allCrew ? T('лише ця зміна') : T('+ ще ') + tm.hidden + T(' з інших змін')); b.type = 'button';
+    b.addEventListener('click', function (ev) { ev.stopPropagation(); S.allCrew = !S.allCrew; after(); });
+    return b;
+  }
+  /* yellow while on a trailer, red after 2 h 30 min since «Почав» */
+  var OVER_MS = 150 * 60000;
+  function light(t) { return t.status === 'started' && t.startedAt && (Date.now() - sh()) - t.startedAt >= OVER_MS ? 'over' : 'work'; }
+  function hmDur(v) { var m = Math.max(0, Math.round(v / 60000)); return Math.floor(m / 60) + ':' + pad(m % 60); }
   function stTxt(t) { return t.status === 'started' ? T('почав ') + hm(t.startedAt) : T('призначено ') + hm(t.assignedAt); }
 
   /* ---------- styles ---------- */
@@ -1958,7 +1992,14 @@ window.YQ_TASKS = (function () {
     '.tk-err{font-size:12.5px;color:var(--hot)}',
     '.tk-team{display:flex;flex-wrap:wrap;gap:6px}',
     '.tk-w{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface-2);border-radius:999px;padding:4px 10px;font-size:12.5px;color:var(--fg);cursor:default}',
-    '.tk-w b{font-weight:700}.tk-w.on{border-color:var(--accent)}.tk-w.on.st{background:color-mix(in srgb,var(--accent) 16%,var(--surface-2))}',
+    '.tk-w b{font-weight:700}',
+    '.tk-w.free{border-color:#2f9e5b;background:color-mix(in srgb,#2f9e5b 18%,var(--surface-2))}',
+    '.tk-w.work{border-color:#d9a21b;background:color-mix(in srgb,#d9a21b 20%,var(--surface-2))}',
+    '.tk-w.over{border-color:#d64545;background:color-mix(in srgb,#d64545 22%,var(--surface-2))}',
+    '.tk-all{font:600 12px var(--font-body);background:none;border:0;color:var(--accent);cursor:pointer;padding:4px 6px}',
+    '.tk-crew{font-size:12px;color:var(--muted)}',
+    '.tk-dot{width:9px;height:9px;border-radius:50%;flex:none;background:#2f9e5b}.tk-dot.work{background:#d9a21b}.tk-dot.over{background:#d64545}',
+    '.tk-chip.work{border-color:#d9a21b;background:color-mix(in srgb,#d9a21b 18%,transparent)}.tk-chip.over{border-color:#d64545;background:color-mix(in srgb,#d64545 20%,transparent)}',
     'button.tk-w{cursor:pointer;font:inherit;font-size:12.5px}.tk-w .tk-free{color:var(--muted)}.tk-w .tk-n{color:var(--muted);font-variant-numeric:tabular-nums}',
     '.tk-my{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
     '.tk-my .tk-trip{font:700 18px var(--font-body);background:none;border:0;color:var(--fg);padding:0;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}',
@@ -1995,16 +2036,21 @@ window.YQ_TASKS = (function () {
     var redraw = function () {
       list.textContent = '';
       if (!S.workers.length) list.appendChild(el('div', 'tk-sub', T('У таблиці Workers немає людей цієї локації.')));
-      S.workers.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (w) {
+      var tm = teamOf();
+      tm.list.forEach(function (w) {
         var lb = el('label'), cb = el('input'); cb.type = 'checkbox'; cb.checked = chosen.indexOf(w.email) >= 0;
         var full = !cb.checked && chosen.length >= 2;
         cb.disabled = full; if (full) lb.className = 'dis';
         cb.addEventListener('change', function () { if (cb.checked) chosen.push(w.email); else chosen = chosen.filter(function (x) { return x !== w.email; }); redraw(); });
         lb.appendChild(cb); lb.appendChild(el('span', null, w.name));
         var on = activeOfWorker(w.email);
-        lb.appendChild(el('small', null, on && on.trip !== String(tr.trip).toUpperCase() ? (on.status === 'started' ? T('розвантажує ') : T('призначено на ')) + on.trip : on ? T('тут') : T('вільний')));
+        var other = on && on.trip !== String(tr.trip).toUpperCase();
+        lb.insertBefore(el('i', 'tk-dot' + (other ? ' ' + light(on) : '')), lb.lastChild);
+        if (other) lb.appendChild(el('small', null, on.trip));
+        lb.title = w.name + (other ? ': ' + on.trip + ' (' + stTxt(on) + ')' : '');
         list.appendChild(lb);
       });
+      var tg = crewToggle(tm, redraw); if (tg) list.appendChild(tg);
     };
     redraw();
     popEl.appendChild(list); popEl.appendChild(msg);
@@ -2040,7 +2086,7 @@ window.YQ_TASKS = (function () {
     if (!S.me || t.noTrip) return;
     var cur = activeFor(t.trip), mine = cur && cur.workers.indexOf(S.me.email) >= 0;
     if (cur && (S.me.canManage || mine)) {
-      var c = el('span', 'tk-chip' + (mine ? ' mine' : ''), '👷 ' + (mine && cur.workers.length === 1 ? T('Ви') : cur.workers.map(function (e) { return e === S.me.email ? T('Ви') : first(nameOf(e)); }).join(', ')) + ' · ' + stTxt(cur));
+      var c = el('span', 'tk-chip ' + light(cur) + (mine ? ' mine' : ''), '👷 ' + (mine && cur.workers.length === 1 ? T('Ви') : cur.workers.map(function (e) { return e === S.me.email ? T('Ви') : first(nameOf(e)); }).join(', ')) + ' · ' + stTxt(cur));
       head.appendChild(c);
     }
     var fin = !cur && !t.unloaded ? doneFor(t.trip) : null;
@@ -2128,20 +2174,23 @@ window.YQ_TASKS = (function () {
       var h2 = el('div', 'tk-hd'); h2.appendChild(el('h2', null, T('Команда')));
       var openN = ctx.working.concat(ctx.queue).filter(function (t) { return !t.allLoaded && !activeFor(t.trip) && !doneFor(t.trip); }).length;
       h2.appendChild(el('small', null, (openN ? T('без людей: ') + openN + T(' трейл. на ярді / в роботі') : T('усі трейлери на ярді мають людей')) + ' · ' + T('оновлюється кожні 20 с')));
+      var tm = teamOf();
+      if (tm.on) h2.insertBefore(el('span', 'tk-crew', tm.on.label), h2.childNodes[1]);
       box.appendChild(h2);
       var team = el('div', 'tk-team');
-      S.workers.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (w) {
+      tm.list.forEach(function (w) {
         var on = activeOfWorker(w.email);
         var dn = S.tasks.filter(function (t) { return t.status === 'done' && t.workers.indexOf(w.email) >= 0 && inShift(t.doneAt); });
         var avg = dn.length ? dn.reduce(function (a, t) { return a + (t.doneAt - (t.startedAt || t.assignedAt)); }, 0) / dn.length : 0;
-        var c = el(on ? 'button' : 'span', 'tk-w' + (on ? ' on' + (on.status === 'started' ? ' st' : '') : ''));
+        var c = el(on ? 'button' : 'span', 'tk-w ' + (on ? light(on) : 'free'));
         if (on) { c.type = 'button'; c.addEventListener('click', function () { var tt = byTrip[on.trip]; if (tt) ctx.goTo(tt); }); }
         c.appendChild(el('b', null, w.name));
-        c.appendChild(on ? el('span', null, on.trip + ' · ' + (on.status === 'started' ? T('з ') + hm(on.startedAt) : T('ще не почав'))) : el('span', 'tk-free', T('вільний')));
+        if (on) c.appendChild(el('span', null, on.trip + (on.status === 'started' && on.startedAt ? ' · ' + hmDur((Date.now() - sh()) - on.startedAt) : '')));
         if (dn.length) c.appendChild(el('span', 'tk-n', '✓' + dn.length + ' · ⌀' + dur(avg)));
         c.title = w.name + ': ' + (on ? on.trip + ' (' + stTxt(on) + ')' : T('вільний')) + (dn.length ? '. ' + T('За зміну розвантажено ') + dn.length + T(', в середньому ') + dur(avg) + '.' : '');
         team.appendChild(c);
       });
+      var tg2 = crewToggle(tm, function () { ctx.rerender(); }); if (tg2) team.appendChild(tg2);
       if (!S.workers.length) team.appendChild(el('span', 'tk-free', T('Додайте людей у аркуш Workers таблиці «Yard Tasks».')));
       box.appendChild(team);
     }
