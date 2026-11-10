@@ -1287,6 +1287,100 @@ header h1 { display: inline-block; vertical-align: middle; }
 .locbtn:hover { color: var(--fg); }
 .locbtn.on { background: var(--accent); color: var(--accent-fg, #fff); cursor: default; }
 @media (max-width: 699px) { .locsw { margin: 6px 0 0; display: flex; width: max-content; } }
+
+/* --- light theme: "Verdelo" — sage glass: misty green background, frosted white cards, one mint-green accent; tabs keep the same floating ball as the dark theme --- */
+:root[data-theme="light"] { --bg: #e7eee9; --surface: rgba(255, 255, 255, .62); --surface-2: rgba(229, 238, 232, .86); --fg: #0f1d16; --muted: #55675d; --line: rgba(20, 62, 38, .11);
+  --accent: #1d9a57; --accent-fg: #ffffff; --mint: #5fd394; --hot: #c8372d; --hot-bg: #fbe5e1; --warn: #94570a; --warn-bg: #f8ecd3; --ok: #1d8a4b;
+  --t-rno: #2f62c8; --t-sbt: #8e3fd6; --t-sck: #0e8574; --t-other: #55675d; --t-ink: #ffffff;
+  --tray: rgba(236, 243, 238, .78); --card: rgba(255, 255, 255, .72); --card-line: rgba(20, 62, 38, .10); --sheen: rgba(255, 255, 255, .8); --glow: 22%;
+  --glass-edge: rgba(255, 255, 255, .78); --glass-shadow: 0 1px 0 rgba(255, 255, 255, .85) inset, 0 10px 28px -16px rgba(14, 58, 33, .32); --tint-on: 14%; color-scheme: light; }
+:root[data-theme="light"] body { background:
+    radial-gradient(ellipse 60% 50% at 4% 0%, rgba(120, 214, 160, .55), transparent 62%),
+    radial-gradient(ellipse 45% 40% at 96% 18%, rgba(29, 154, 87, .16), transparent 64%),
+    radial-gradient(ellipse 70% 50% at 70% 100%, rgba(170, 214, 186, .55), transparent 70%),
+    linear-gradient(170deg, #f3f7f3, #e0e9e3 64%);
+  background-attachment: fixed; background-color: #e7eee9; }
+:root[data-theme="light"] .list > li.row, :root[data-theme="light"] .tlbox, :root[data-theme="light"] .ovbox, :root[data-theme="light"] .tkbox, :root[data-theme="light"] .shipcard, :root[data-theme="light"] .msg, :root[data-theme="light"] .empty, :root[data-theme="light"] .stickybar, :root[data-theme="light"] .stat {
+  background: var(--surface); border: 1px solid var(--glass-edge); border-radius: 16px; box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(1.35); backdrop-filter: blur(18px) saturate(1.35); }
+:root[data-theme="light"] .stickybar { background: rgba(255, 255, 255, .55); }
+:root[data-theme="light"] .tile, :root[data-theme="light"] .hchip, :root[data-theme="light"] .st, :root[data-theme="light"] .tl-track { background: var(--surface-2); border-radius: 12px; }
+:root[data-theme="light"] .hchip, :root[data-theme="light"] .st { border-radius: 999px; }
+:root[data-theme="light"] .tl-axis .tl-track { background: none; }
+:root[data-theme="light"] .tl-bar { background: color-mix(in srgb, var(--accent) 38%, #b9cbbf); opacity: 1; }
+:root[data-theme="light"] .detail .card { background-color: var(--card); border-color: var(--glass-edge); border-radius: 14px; box-shadow: 0 6px 18px -14px rgba(14, 58, 33, .35); }
+:root[data-theme="light"] .search input { background: rgba(255, 255, 255, .7); border: 1px solid var(--glass-edge); border-radius: 999px; box-shadow: var(--glass-shadow); }
+:root[data-theme="light"] .chip { background: rgba(255, 255, 255, .55); border: 1px solid var(--glass-edge); color: var(--fg); }
+:root[data-theme="light"] .chip:hover { background: rgba(255, 255, 255, .85); }
+:root[data-theme="light"] .chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); box-shadow: 0 6px 14px -8px color-mix(in srgb, var(--accent) 80%, transparent); }
+:root[data-theme="light"] .chip.tchip[aria-pressed="true"] { background: var(--tc); color: var(--t-ink); border-color: var(--tc); }
+:root[data-theme="light"] .btn { border-radius: 999px; }
+:root[data-theme="light"] .pill.live { background: color-mix(in srgb, var(--mint) 30%, transparent); color: #126b3b; }
+:root[data-theme="light"] .pop, :root[data-theme="light"] .toast, :root[data-theme="light"] .tk-pop { background: rgba(255, 255, 255, .78); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4); border-color: var(--glass-edge); border-radius: 16px; }
+:root[data-theme="light"] .pop-row.new { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+:root[data-theme="light"] h1 { letter-spacing: .02em; }
+:root[data-theme="light"] .stat b { color: var(--fg); }
+@media (prefers-color-scheme: light) {
+:root:not([data-theme="dark"]) { --bg: #e7eee9; --surface: rgba(255, 255, 255, .62); --surface-2: rgba(229, 238, 232, .86); --fg: #0f1d16; --muted: #55675d; --line: rgba(20, 62, 38, .11);
+  --accent: #1d9a57; --accent-fg: #ffffff; --mint: #5fd394; --hot: #c8372d; --hot-bg: #fbe5e1; --warn: #94570a; --warn-bg: #f8ecd3; --ok: #1d8a4b;
+  --t-rno: #2f62c8; --t-sbt: #8e3fd6; --t-sck: #0e8574; --t-other: #55675d; --t-ink: #ffffff;
+  --tray: rgba(236, 243, 238, .78); --card: rgba(255, 255, 255, .72); --card-line: rgba(20, 62, 38, .10); --sheen: rgba(255, 255, 255, .8); --glow: 22%;
+  --glass-edge: rgba(255, 255, 255, .78); --glass-shadow: 0 1px 0 rgba(255, 255, 255, .85) inset, 0 10px 28px -16px rgba(14, 58, 33, .32); --tint-on: 14%; color-scheme: light; }
+:root:not([data-theme="dark"]) body { background:
+    radial-gradient(ellipse 60% 50% at 4% 0%, rgba(120, 214, 160, .55), transparent 62%),
+    radial-gradient(ellipse 45% 40% at 96% 18%, rgba(29, 154, 87, .16), transparent 64%),
+    radial-gradient(ellipse 70% 50% at 70% 100%, rgba(170, 214, 186, .55), transparent 70%),
+    linear-gradient(170deg, #f3f7f3, #e0e9e3 64%);
+  background-attachment: fixed; background-color: #e7eee9; }
+:root:not([data-theme="dark"]) .list > li.row, :root:not([data-theme="dark"]) .tlbox, :root:not([data-theme="dark"]) .ovbox, :root:not([data-theme="dark"]) .tkbox, :root:not([data-theme="dark"]) .shipcard, :root:not([data-theme="dark"]) .msg, :root:not([data-theme="dark"]) .empty, :root:not([data-theme="dark"]) .stickybar, :root:not([data-theme="dark"]) .stat {
+  background: var(--surface); border: 1px solid var(--glass-edge); border-radius: 16px; box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(1.35); backdrop-filter: blur(18px) saturate(1.35); }
+:root:not([data-theme="dark"]) .stickybar { background: rgba(255, 255, 255, .55); }
+:root:not([data-theme="dark"]) .tile, :root:not([data-theme="dark"]) .hchip, :root:not([data-theme="dark"]) .st, :root:not([data-theme="dark"]) .tl-track { background: var(--surface-2); border-radius: 12px; }
+:root:not([data-theme="dark"]) .hchip, :root:not([data-theme="dark"]) .st { border-radius: 999px; }
+:root:not([data-theme="dark"]) .tl-axis .tl-track { background: none; }
+:root:not([data-theme="dark"]) .tl-bar { background: color-mix(in srgb, var(--accent) 38%, #b9cbbf); opacity: 1; }
+:root:not([data-theme="dark"]) .detail .card { background-color: var(--card); border-color: var(--glass-edge); border-radius: 14px; box-shadow: 0 6px 18px -14px rgba(14, 58, 33, .35); }
+:root:not([data-theme="dark"]) .search input { background: rgba(255, 255, 255, .7); border: 1px solid var(--glass-edge); border-radius: 999px; box-shadow: var(--glass-shadow); }
+:root:not([data-theme="dark"]) .chip { background: rgba(255, 255, 255, .55); border: 1px solid var(--glass-edge); color: var(--fg); }
+:root:not([data-theme="dark"]) .chip:hover { background: rgba(255, 255, 255, .85); }
+:root:not([data-theme="dark"]) .chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); box-shadow: 0 6px 14px -8px color-mix(in srgb, var(--accent) 80%, transparent); }
+:root:not([data-theme="dark"]) .chip.tchip[aria-pressed="true"] { background: var(--tc); color: var(--t-ink); border-color: var(--tc); }
+:root:not([data-theme="dark"]) .btn { border-radius: 999px; }
+:root:not([data-theme="dark"]) .pill.live { background: color-mix(in srgb, var(--mint) 30%, transparent); color: #126b3b; }
+:root:not([data-theme="dark"]) .pop, :root:not([data-theme="dark"]) .toast, :root:not([data-theme="dark"]) .tk-pop { background: rgba(255, 255, 255, .78); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4); border-color: var(--glass-edge); border-radius: 16px; }
+:root:not([data-theme="dark"]) .pop-row.new { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+:root:not([data-theme="dark"]) h1 { letter-spacing: .02em; }
+:root:not([data-theme="dark"]) .stat b { color: var(--fg); }
+}
+
+/* theme switch: the new theme flows over the page like spilled water — a puddle from the corner and rounded tongues
+   running out of its edge that then fill in. Bitmaps are drawn once and only scaled (smooth).
+   Without View Transitions the switch is instant. */
+@property --k0 { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --k1 { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --k2 { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --k3 { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --k4 { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --k5 { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --k6 { syntax: "<length>"; inherits: true; initial-value: 0px; }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) {
+  -webkit-mask-image: var(--im0), var(--im1), var(--im2), var(--im3), var(--im4), var(--im5), var(--im6); mask-image: var(--im0), var(--im1), var(--im2), var(--im3), var(--im4), var(--im5), var(--im6);
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-size: var(--k0) var(--k0), var(--k1) var(--k1), var(--k2) var(--k2), var(--k3) var(--k3), var(--k4) var(--k4), var(--k5) var(--k5), var(--k6) var(--k6); mask-size: var(--k0) var(--k0), var(--k1) var(--k1), var(--k2) var(--k2), var(--k3) var(--k3), var(--k4) var(--k4), var(--k5) var(--k5), var(--k6) var(--k6);
+  -webkit-mask-position: calc(var(--x0) - var(--k0) / 2) calc(var(--y0) - var(--k0) / 2), calc(var(--x1) - var(--k1) / 2) calc(var(--y1) - var(--k1) / 2), calc(var(--x2) - var(--k2) / 2) calc(var(--y2) - var(--k2) / 2), calc(var(--x3) - var(--k3) / 2) calc(var(--y3) - var(--k3) / 2), calc(var(--x4) - var(--k4) / 2) calc(var(--y4) - var(--k4) / 2), calc(var(--x5) - var(--k5) / 2) calc(var(--y5) - var(--k5) / 2), calc(var(--x6) - var(--k6) / 2) calc(var(--y6) - var(--k6) / 2); mask-position: calc(var(--x0) - var(--k0) / 2) calc(var(--y0) - var(--k0) / 2), calc(var(--x1) - var(--k1) / 2) calc(var(--y1) - var(--k1) / 2), calc(var(--x2) - var(--k2) / 2) calc(var(--y2) - var(--k2) / 2), calc(var(--x3) - var(--k3) / 2) calc(var(--y3) - var(--k3) / 2), calc(var(--x4) - var(--k4) / 2) calc(var(--y4) - var(--k4) / 2), calc(var(--x5) - var(--k5) / 2) calc(var(--y5) - var(--k5) / 2), calc(var(--x6) - var(--k6) / 2) calc(var(--y6) - var(--k6) / 2);
+  animation: yq-k0 var(--d0, .6s) cubic-bezier(.2, .7, .3, 1) var(--w0, 0s) both, yq-k1 var(--d1, .6s) cubic-bezier(.2, .7, .3, 1) var(--w1, 0s) both, yq-k2 var(--d2, .6s) cubic-bezier(.2, .7, .3, 1) var(--w2, 0s) both, yq-k3 var(--d3, .6s) cubic-bezier(.2, .7, .3, 1) var(--w3, 0s) both, yq-k4 var(--d4, .6s) cubic-bezier(.2, .7, .3, 1) var(--w4, 0s) both, yq-k5 var(--d5, .6s) cubic-bezier(.2, .7, .3, 1) var(--w5, 0s) both, yq-k6 var(--d6, .6s) cubic-bezier(.2, .7, .3, 1) var(--w6, 0s) both; }
+@keyframes yq-k0 { from { --k0: 0px; } to { --k0: var(--e0, 0px); } }
+@keyframes yq-k1 { from { --k1: 0px; } to { --k1: var(--e1, 0px); } }
+@keyframes yq-k2 { from { --k2: 0px; } to { --k2: var(--e2, 0px); } }
+@keyframes yq-k3 { from { --k3: 0px; } to { --k3: var(--e3, 0px); } }
+@keyframes yq-k4 { from { --k4: 0px; } to { --k4: var(--e4, 0px); } }
+@keyframes yq-k5 { from { --k5: 0px; } to { --k5: var(--e5, 0px); } }
+@keyframes yq-k6 { from { --k6: 0px; } to { --k6: var(--e6, 0px); } }
+/* a short flash on the theme button so the tap is answered at once */
+#theme.ink-tap { animation: yq-tap .5s ease-out; }
+@keyframes yq-tap { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); } 100% { box-shadow: 0 0 0 14px transparent; } }
 </style>
 </head>
 <body>
@@ -4528,6 +4622,28 @@ window.YQ_TASKS = (function () {
     $('theme').setAttribute('aria-label', yqT('Тема: ') + lab[1].slice(2) + yqT('. Натисніть, щоб змінити'));
     $('theme').title = yqT('Тема: ') + lab[1].slice(2) + yqT(' (натисніть, щоб змінити)');
   }
+  /* ink blobs for the theme switch, rasterised once to bitmaps (scaling a bitmap is cheap; re-filtering an SVG every frame is not) */
+  var INK_SVG = { main: 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22512%22%20height%3D%22512%22%20viewBox%3D%220%200%20200%20200%22%3E%3Cfilter%20id%3D%22f%22%20x%3D%22-10%25%22%20y%3D%22-10%25%22%20width%3D%22120%25%22%20height%3D%22120%25%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%22.011%22%20numOctaves%3D%222%22%20seed%3D%225%22%2F%3E%3CfeDisplacementMap%20in%3D%22SourceGraphic%22%20scale%3D%2230%22%20xChannelSelector%3D%22R%22%20yChannelSelector%3D%22G%22%2F%3E%3CfeGaussianBlur%20stdDeviation%3D%22.4%22%2F%3E%3C%2Ffilter%3E%3Cg%20filter%3D%22url%28%23f%29%22%3E%3Ccircle%20cx%3D%22100%22%20cy%3D%22100%22%20r%3D%2280%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E', tongueA: 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22512%22%20height%3D%22512%22%20viewBox%3D%220%200%20200%20200%22%3E%3Cfilter%20id%3D%22f%22%20x%3D%22-10%25%22%20y%3D%22-10%25%22%20width%3D%22120%25%22%20height%3D%22120%25%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%22.011%22%20numOctaves%3D%222%22%20seed%3D%229%22%2F%3E%3CfeDisplacementMap%20in%3D%22SourceGraphic%22%20scale%3D%2226%22%20xChannelSelector%3D%22R%22%20yChannelSelector%3D%22G%22%2F%3E%3CfeGaussianBlur%20stdDeviation%3D%22.4%22%2F%3E%3C%2Ffilter%3E%3Cg%20filter%3D%22url%28%23f%29%22%3E%3Cellipse%20cx%3D%22100%22%20cy%3D%22100%22%20rx%3D%2286%22%20ry%3D%2230%22%20transform%3D%22rotate%28-45%20100%20100%29%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E', tongueB: 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22512%22%20height%3D%22512%22%20viewBox%3D%220%200%20200%20200%22%3E%3Cfilter%20id%3D%22f%22%20x%3D%22-10%25%22%20y%3D%22-10%25%22%20width%3D%22120%25%22%20height%3D%22120%25%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%22.011%22%20numOctaves%3D%222%22%20seed%3D%2217%22%2F%3E%3CfeDisplacementMap%20in%3D%22SourceGraphic%22%20scale%3D%2226%22%20xChannelSelector%3D%22R%22%20yChannelSelector%3D%22G%22%2F%3E%3CfeGaussianBlur%20stdDeviation%3D%22.4%22%2F%3E%3C%2Ffilter%3E%3Cg%20filter%3D%22url%28%23f%29%22%3E%3Cellipse%20cx%3D%22100%22%20cy%3D%22100%22%20rx%3D%2280%22%20ry%3D%2238%22%20transform%3D%22rotate%28-40%20100%20100%29%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E' }, inkMask = {};
+  setTimeout(function () {
+    Object.keys(INK_SVG).forEach(function (k) {
+      var im = new Image();
+      im.onload = function () { try { var c = document.createElement('canvas'); c.width = c.height = 512; c.getContext('2d').drawImage(im, 0, 0, 512, 512); inkMask[k] = c.toDataURL('image/png'); } catch (e) {} };
+      im.src = INK_SVG[k];
+    });
+  }, 400);
+  function inkImg(k) { return 'url("' + (inkMask[k] || INK_SVG[k]) + '")'; }
+  /* like spilled water: layer 0 is the puddle from the corner; layers 1-6 are rounded tongues that run out of its edge
+     along the way and then fill in. Fast splash at first, then it slowly creeps to the far corner. */
+  function inkLayers(x, y, W, H) {
+    var far = Math.max(Math.hypot(x, y), Math.hypot(W - x, y), Math.hypot(x, H - y), Math.hypot(W - x, H - y));
+    var cx = W - x, cy = H - y, L = Math.hypot(cx, cy) || 1, px = -cy / L, py = cx / L;
+    var out = [{ x: x, y: y, e: far / .34, d: 1.45, w: 0, im: 'main' }];
+    [[.2, .2], [.3, -.22], [.42, .04], [.54, -.14], [.66, .24], [.8, -.05]].forEach(function (q, i) {
+      var t = q[0], off = q[1] * Math.min(W, H);
+      out.push({ x: x + cx * t + px * off, y: y + cy * t + py * off, e: far * (.5 + t * .62), d: .95, w: .05 + t * .5, im: i % 2 ? 'tongueB' : 'tongueA' });
+    });
+    return out;
+  }
   var themeMode = 'auto';
   try { themeMode = localStorage.getItem('yq_theme') || 'auto'; } catch (e) {}
   applyTheme(themeMode);
@@ -4535,7 +4651,19 @@ window.YQ_TASKS = (function () {
     var i = THEMES.map(function (x) { return x[0]; }).indexOf(themeMode);
     themeMode = THEMES[(i + 1) % THEMES.length][0];
     try { localStorage.setItem('yq_theme', themeMode); } catch (e) {}
-    applyTheme(themeMode);
+    var tb = $('theme'), b = tb.getBoundingClientRect(), de = document.documentElement;
+    tb.classList.remove('ink-tap'); void tb.offsetWidth; tb.classList.add('ink-tap');
+    if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) { applyTheme(themeMode); return; }
+    /* which theme is about to show: dark falls from the theme button, light rises from the bottom-left corner */
+    var goDark = themeMode === 'dark' || (themeMode === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+    var W = window.innerWidth, H = window.innerHeight;
+    var x = goDark ? b.left + b.width / 2 : 0, y = goDark ? b.top + b.height / 2 : H;
+    inkLayers(x, y, W, H).forEach(function (l, i) {
+      de.style.setProperty('--x' + i, l.x + 'px'); de.style.setProperty('--y' + i, l.y + 'px');
+      de.style.setProperty('--e' + i, Math.ceil(l.e) + 'px'); de.style.setProperty('--d' + i, l.d + 's'); de.style.setProperty('--w' + i, l.w + 's');
+      de.style.setProperty('--im' + i, inkImg(l.im));
+    });
+    document.startViewTransition(function () { applyTheme(themeMode); });
   });
   $('q').addEventListener('input', function () {
     renderSearch(build());
