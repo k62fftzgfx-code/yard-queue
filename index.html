@@ -1921,6 +1921,13 @@ window.claude = (function () {
   /* the board through the Sheets API (read-only): week sheets' raw values + merged cells, packed back into a workbook
      so the page reads it exactly like the Drive export it used before */
   var SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets/';
+  /* «46 (11/09-11/15)» or «46 (1109-1115)»: is the week's last day no more than `days` ago? Unknown names stay. */
+  function weekFresh(title, days) {
+    var m = String(title).match(/-\s*(\d{1,2})\/?(\d{2})\s*\)/); if (!m) return true;
+    var now = new Date(), mo = +m[1] - 1, d = +m[2], y = now.getFullYear();
+    if (mo - now.getMonth() > 6) y--; else if (now.getMonth() - mo > 6) y++;
+    return new Date(y, mo, d, 23, 59).getTime() >= Date.now() - days * 86400000;
+  }
   function sheetsGet(url, t) {
     return fetch(url, { headers: { Authorization: 'Bearer ' + t }, cache: 'no-store' }).then(function (r) {
       if (r.status === 401) { tok = null; exp = 0; try { sessionStorage.removeItem('yq_gtok'); } catch (e) {} throw needSignIn(); }
@@ -1934,13 +1941,21 @@ window.claude = (function () {
       var id = encodeURIComponent(args.fileId), t0;
       return token().then(function (t) {
         t0 = t;
-        return sheetsGet(SHEETS + id + '?fields=sheets(properties(title),merges)', t);
+        return sheetsGet(SHEETS + id + '?fields=sheets(properties(title))', t);
       }).then(function (meta) {
-        var weeks = (meta.sheets || []).filter(function (sh) { return /^\d+\s*\(/.test(sh.properties.title); });
+        /* only the week sheets still in play (ended at most 7 days ago), columns A..AE: far less to download */
+        var weeks = (meta.sheets || []).filter(function (sh) { return /^\d+\s*\(/.test(sh.properties.title) && weekFresh(sh.properties.title, 7); });
         if (!weeks.length) return { weeks: [], vals: { valueRanges: [] } };
-        var q = weeks.map(function (sh) { return 'ranges=' + encodeURIComponent("'" + sh.properties.title.replace(/'/g, "''") + "'"); }).join('&');
-        return sheetsGet(SHEETS + id + '/values:batchGet?' + q + '&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER&majorDimension=ROWS', t0)
-          .then(function (vals) { return { weeks: weeks, vals: vals }; });
+        var rng = weeks.map(function (sh) { return encodeURIComponent("'" + sh.properties.title.replace(/'/g, "''") + "'!A1:AE"); });
+        var q = rng.map(function (r) { return 'ranges=' + r; }).join('&');
+        return Promise.all([
+          sheetsGet(SHEETS + id + '/values:batchGet?' + q + '&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER&majorDimension=ROWS', t0),
+          sheetsGet(SHEETS + id + '?' + q + '&fields=sheets(properties(title),merges)', t0)
+        ]).then(function (res) {
+          var mg = {}; (res[1].sheets || []).forEach(function (sh) { mg[sh.properties.title] = sh.merges || []; });
+          weeks.forEach(function (sh) { sh.merges = mg[sh.properties.title] || []; });
+          return { weeks: weeks, vals: res[0] };
+        });
       }).then(function (d) {
         var wb = XLSX.utils.book_new();
         d.weeks.forEach(function (sh, i) {
@@ -2085,7 +2100,9 @@ window.YQ_TASKS = (function () {
   function act(action, data) {
     S.busy = true; S.err = '';
     S.warn = '';
-    return call(action, data, true).then(function (r) {
+    /* «зайнята»: someone else is writing right now — wait a moment and try once more by itself */
+    var once = function () { return call(action, data, true).catch(function (e) { if (e && e.error === 'busy') return new Promise(function (ok) { setTimeout(ok, 2500); }).then(function () { return call(action, data, true); }); throw e; }); };
+    return once().then(function (r) {
       var b = r && r.board;
       if (b && b.error) S.warn = T('Борда: не вдалося записати — ') + b.error;
       else if (b && b.manual && b.manual.length) S.warn = T('У борді в колонці «Loaded by» вже вписано іншу людину вручну, ці рядки не чіпав: ') + b.manual.join(', ');
@@ -2101,6 +2118,9 @@ window.YQ_TASKS = (function () {
         if (i >= 0) S.tasks[i] = r.task; else S.tasks.push(r.task);
       }
       setTimeout(function () { refresh(false); }, 0);
+      /* the cards change at once from the cells the script wrote; the full re-read follows quietly to pick up anyone else's edits */
+      if (r && r.writes && r.writes.length && window.YQ_APPLY_WRITES) { try { window.YQ_APPLY_WRITES(r.writes); } catch (e) {} }
+      if (b && window.YQ_BOARD_REFRESH) setTimeout(window.YQ_BOARD_REFRESH, 4000);
       return r;
     })
       .catch(function (e) { S.err = errText(e); if (e && /bad_status|not_found|has_task/.test(e.error)) return refresh(false); if (S.ctx) S.ctx.rerender(); throw e; })
@@ -5391,6 +5411,27 @@ window.YQ_TASKS = (function () {
     groups.forEach(function (g) { if (/^\s*done\s*$/i.test(g.eta || '')) { g.eta = 'YARD'; if (!g.ustatus) g.ustatus = 'UNLOADED'; } });
     return groups;
   }
+  /* the task buttons write the board: read it again right after, so the cards show the new statuses */
+  window.YQ_BOARD_REFRESH = function () { if (!state.busy) refresh(true); else setTimeout(window.YQ_BOARD_REFRESH, 1500); };
+  /* the script's answer lists the cells it just wrote: put them into the board copy in memory and redraw at once,
+     without waiting for the full re-read */
+  window.YQ_APPLY_WRITES = function (writes) {
+    var wb = window.YQ_LAST_WB; if (!wb || !writes || !writes.length) return false;
+    var safe = function (n) { return String(n).replace(/[:\\\/?*\[\]]/g, '_').slice(0, 31); };
+    var colIx = function (L) { var n = 0; for (var i = 0; i < L.length; i++) n = n * 26 + (L.charCodeAt(i) - 64); return n - 1; };
+    var hit = 0;
+    writes.forEach(function (w) {
+      var name = wb.SheetNames.indexOf(w[0]) >= 0 ? w[0] : safe(w[0]); var ws = wb.Sheets[name]; if (!ws) return;
+      var addr = XLSX.utils.encode_cell({ r: w[1] - 1, c: colIx(String(w[2])) }), v = w[3];
+      if (v === '' || v == null) delete ws[addr]; else ws[addr] = { t: typeof v === 'number' ? 'n' : 's', v: v };
+      var rg = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1'), cc = XLSX.utils.decode_cell(addr);
+      if (cc.r > rg.e.r) rg.e.r = cc.r; if (cc.c > rg.e.c) rg.e.c = cc.c; ws['!ref'] = XLSX.utils.encode_range(rg);
+      hit++;
+    });
+    if (!hit) return false;
+    try { state.groups = normGroups(parseBoard(XLSX, wb)); render(); } catch (e) { console.error(e); return false; }
+    return true;
+  };
   async function refresh(auto) {
     if (state.busy) return;
     state.busy = true;
