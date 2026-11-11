@@ -2326,7 +2326,12 @@ window.YQ_TASKS = (function () {
     '.tk-pop .tk-btn.danger{color:var(--hot);border-color:color-mix(in srgb,var(--hot) 35%,transparent)}',
     '@media (prefers-reduced-motion:reduce){.tk-acts-row .tk-as.tk-go.live{animation:none}}',
     '.tk-acts-row .tk-as.tk-rm:hover{color:var(--hot);border-color:color-mix(in srgb,var(--hot) 45%,transparent);background:color-mix(in srgb,var(--hot) 10%,color-mix(in srgb,var(--surface) 60%,transparent))}',
-    '.tk-acts-row .tk-as.tk-rm.armed{width:auto;padding:0 12px 0 9px;gap:4px;color:#fff;background:#c0392b;border-color:#c0392b;font-weight:700;font-size:12.5px;animation:tk-pop .3s cubic-bezier(.34,1.56,.64,1)}',
+    '.tk-acts-row{position:relative}',
+    '.tk-ask{position:absolute;inset:auto 0 0 0;top:auto;height:36px;display:flex;align-items:center;gap:6px;padding:0 4px 0 12px;border-radius:999px;background:color-mix(in srgb,var(--surface) 88%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid color-mix(in srgb,var(--hot) 45%,transparent);box-shadow:0 6px 18px -8px rgba(0,0,0,.4);font-size:13px;font-weight:600;color:var(--fg);animation:tk-in .22s cubic-bezier(.34,1.56,.64,1) both;z-index:2}',
+    '.tk-ask span{flex:1;white-space:nowrap}',
+    '.tk-ask button{font:700 12.5px var(--font-body);height:28px;padding:0 12px;border-radius:999px;cursor:pointer;border:1px solid color-mix(in srgb,var(--fg) 15%,transparent);background:color-mix(in srgb,var(--surface-2) 80%,transparent);color:var(--fg)}',
+    '.tk-ask .tk-ask-y{background:#c0392b;border-color:#c0392b;color:#fff}',
+    '.tk-ask.out{opacity:0;transform:translateY(3px);transition:opacity .15s,transform .15s}',
     '.tk-ec.used{border-style:dashed;background:transparent;color:var(--muted)}',
     '.tk-ec.st{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)}',
     '.tk-quick{padding:4px 0 2px}',
@@ -2925,19 +2930,23 @@ window.YQ_TASKS = (function () {
     pr.addEventListener('click', function () { try { window.print(); } catch (e) { pr.textContent = T('Ctrl+P / ⌘P'); } });
   }
   /* card buttons are icons only: the name sits in the tooltip and for screen readers */
-  /* «Зняти» on the card: first tap arms it (turns red, «Зняти?»), the second within 3 s takes the assignment back */
+  /* «Зняти» on the card: the tap lays a small question over the whole button row («Зняти? Так / Ні»), nothing shifts */
   function cancelBtn(task) {
     var b = el('button', 'tk-as tk-ib tk-rm'); b.type = 'button'; b.appendChild(ico('cancel')); iconBtn(b, T('Зняти призначення'));
-    var armed = null;
     b.addEventListener('click', function (ev) {
       ev.stopPropagation();
-      if (!armed) {
-        b.classList.add('armed'); b.appendChild(document.createTextNode(T('Зняти?')));
-        armed = setTimeout(function () { armed = null; b.classList.remove('armed'); if (b.lastChild && b.lastChild.nodeType === 3) b.removeChild(b.lastChild); }, 3000);
-        return;
-      }
-      clearTimeout(armed); armed = null; b.disabled = true;
-      act('cancel', { id: task.id }).then(function () { if (S.ctx) S.ctx.rerender(); }, function () { b.disabled = false; if (S.ctx) S.ctx.rerender(); });
+      var bar = b.closest('.tk-acts-row'); if (!bar || bar.querySelector('.tk-ask')) return;
+      var ask = el('div', 'tk-ask'); ask.appendChild(el('span', null, T('Зняти призначення?')));
+      var yes = el('button', 'tk-ask-y', T('Так')), no = el('button', 'tk-ask-n', T('Ні')); yes.type = no.type = 'button';
+      ask.appendChild(no); ask.appendChild(yes); bar.appendChild(ask);
+      var shut = function () { ask.classList.add('out'); setTimeout(function () { ask.remove(); }, 160); };
+      var tm = setTimeout(shut, 5000);
+      no.addEventListener('click', function (e2) { e2.stopPropagation(); clearTimeout(tm); shut(); });
+      yes.addEventListener('click', function (e2) {
+        e2.stopPropagation(); clearTimeout(tm); yes.disabled = no.disabled = true; yes.textContent = '…';
+        act('cancel', { id: task.id }).then(function () { if (S.ctx) S.ctx.rerender(); }, function () { shut(); if (S.ctx) S.ctx.rerender(); });
+      });
+      ask.addEventListener('click', function (e2) { e2.stopPropagation(); });
     });
     return b;
   }
@@ -2977,6 +2986,18 @@ window.YQ_TASKS = (function () {
       bar.appendChild(db);
     }
     /* Start loading is in the «Призначити» window, the same as Start unload */
+    /* planned (people assigned, not loading yet): «Вантажимо» right on the card */
+    if (!loading && live) {
+      var sg = el('button', 'tk-as tk-go'); sg.type = 'button'; sg.appendChild(ico('play')); sg.appendChild(document.createTextNode(T('Вантажимо'))); sg.title = T('Почали завантаження');
+      sg.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        var u = g.unitOut || cur.unit || '';
+        var go1 = function (unit) { return act('shipStatus', { op: 'loading', unit: unit, pros: g.pros, pallets: g.total, shift: shiftLabel(), id: cur.id }); };
+        if (u) { sg.disabled = true; go1(u).then(function () { if (S.ctx) S.ctx.rerender(); }, function () { sg.disabled = false; if (S.ctx) S.ctx.rerender(); }); }
+        else askField(sg, T('Вантажимо: ') + g.pros.join(', '), [{ label: T('№ трейлера'), value: '', req: true }], function (v) { return go1(v[0]); });
+      });
+      bar.appendChild(sg);
+    }
     if (live) bar.appendChild(cancelBtn(cur));
     if (g.items && g.items.length) {
       var pb = el('button', 'tk-as tk-prbtn'); pb.type = 'button'; pb.title = T('Друк листа завантаження');
