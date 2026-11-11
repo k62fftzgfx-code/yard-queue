@@ -2090,7 +2090,18 @@ window.YQ_TASKS = (function () {
       if (b && b.error) S.warn = T('Борда: не вдалося записати — ') + b.error;
       else if (b && b.manual && b.manual.length) S.warn = T('У борді в колонці «Loaded by» вже вписано іншу людину вручну, ці рядки не чіпав: ') + b.manual.join(', ');
       else if (b && b.who && b.who.manual && b.who.manual.length) S.warn = T('У борді вже вписано іншу людину вручну, не чіпав: ') + b.who.manual.join(', ');
-      return refresh(false).then(function () { return r; });
+      /* a board write that failed inside the answer must not stay silent */
+      if (!S.warn && b && typeof b === 'object') {
+        var errs = Object.keys(b).map(function (k) { return b[k] && b[k].error ? b[k].error : ''; }).filter(String);
+        if (errs.length) S.warn = T('Борда: не вдалося записати — ') + errs[0];
+      }
+      /* show the answer at once; the full list comes in the background */
+      if (r && r.task) {
+        var i = -1; S.tasks.forEach(function (t, k) { if (t.id === r.task.id) i = k; });
+        if (i >= 0) S.tasks[i] = r.task; else S.tasks.push(r.task);
+      }
+      setTimeout(function () { refresh(false); }, 0);
+      return r;
     })
       .catch(function (e) { S.err = errText(e); if (e && /bad_status|not_found|has_task/.test(e.error)) return refresh(false); if (S.ctx) S.ctx.rerender(); throw e; })
       .then(function (r) { S.busy = false; return r; }, function (e) { S.busy = false; throw e; });
