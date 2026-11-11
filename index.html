@@ -2332,6 +2332,11 @@ window.YQ_TASKS = (function () {
     '.tk-ask button{font:700 12.5px var(--font-body);height:28px;padding:0 12px;border-radius:999px;cursor:pointer;border:1px solid color-mix(in srgb,var(--fg) 15%,transparent);background:color-mix(in srgb,var(--surface-2) 80%,transparent);color:var(--fg)}',
     '.tk-ask .tk-ask-y{background:#c0392b;border-color:#c0392b;color:#fff}',
     '.tk-ask.out{opacity:0;transform:translateY(3px);transition:opacity .15s,transform .15s}',
+    /* the ship card header: «LOADING» never breaks; who is loading sits on its own line, readable in both themes */
+    '.shipcard .c-top .st{white-space:nowrap;overflow-wrap:normal;flex:none}',
+    '.tk-chip.tk-shipchip{display:flex;align-self:flex-start;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;padding:3px 10px}',
+    '.tk-chip.tk-shipchip.work{background:color-mix(in srgb,#d9a21b 26%,var(--surface));border-color:#d9a21b;color:var(--fg)}',
+    '.tk-chip.tk-shipchip.over{background:color-mix(in srgb,#d64545 26%,var(--surface));border-color:#d64545;color:var(--fg)}',
     '.tk-ec.used{border-style:dashed;background:transparent;color:var(--muted)}',
     '.tk-ec.st{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)}',
     '.tk-quick{padding:4px 0 2px}',
@@ -2960,7 +2965,7 @@ window.YQ_TASKS = (function () {
       var label = cur.status === 'started' ? T('вантажать з ') + hm(cur.startedAt) : cur.status === 'done' ? (/^Сторедж/.test(cur.note) ? cur.note.split(' · ')[0] : T('завантажено ') + hm(cur.doneAt)) : T('призначено');
       var c = el('span', 'tk-chip ' + (cur.status === 'done' ? '' : light(cur)), (txt ? txt + ' · ' : '') + label);
       c.insertBefore(ico(cur.status === 'done' ? 'done' : cur.workers.length > 1 ? 'team' : 'person'), c.firstChild);
-      head.appendChild(c);
+      c.classList.add('tk-shipchip'); var ct = li.querySelector('.c-top'); if (ct && ct.parentNode === li) ct.insertAdjacentElement('afterend', c); else head.appendChild(c);  /* its own line under the header, never squeezed */
     }
     if (g.stopped) {
       /* CH / NOK, HOLD, SELL: the dispatchers' warning — not ours to change, but it must stand out */
