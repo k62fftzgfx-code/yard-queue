@@ -1872,6 +1872,21 @@ window.claude = (function () {
     return gisP;
   }
   loadGis().catch(function () {});
+  /* «Змінити акаунт»: Google shows its account chooser, then the page reloads under the new account */
+  var switching = false;
+  window.YQ_GH_SWITCH = function () {
+    switching = true; tok = null; exp = 0;
+    try { sessionStorage.removeItem('yq_gtok'); } catch (e) {}
+    return token().catch(function () { switching = false; });
+  };
+  function addSwitchBtn() {
+    var ref = document.getElementById('langBtn'); if (!ref || document.getElementById('ghAcct')) return;
+    var b = document.createElement('button'); b.id = 'ghAcct'; b.type = 'button'; b.className = 'btn ghost sm';
+    b.textContent = yqT('Змінити акаунт'); b.title = yqT('Увійти іншим Google-акаунтом');
+    b.addEventListener('click', function () { window.YQ_GH_SWITCH(); });
+    ref.parentNode.insertBefore(b, ref);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addSwitchBtn); else setTimeout(addSwitchBtn, 0);
   function needSignIn() {
     return err('consent_required', signedOnce ? yqT('Сесія Google закінчилась (діє 1 годину). Натисніть, щоб продовжити.') : yqT('Щоб побачити борду, увійдіть через Google. Доступ є лише в тих, кому відкрита таблиця «MKM 3.1 Inbound Ops».'), yqT('Увійти через Google'));
   }
@@ -1887,12 +1902,14 @@ window.claude = (function () {
           callback: function (r) {
             if (!r || r.error || !r.access_token) return bad(err('consent_required', yqT('Вхід через Google скасовано або вікно заблоковане браузером.'), yqT('Увійти через Google')));
             tok = r.access_token; exp = Date.now() + ((+r.expires_in || 3600) - 60) * 1000; signedOnce = true;
+            var wasSwitch = switching; switching = false;
+            if (wasSwitch) { try { sessionStorage.setItem('yq_gtok', JSON.stringify({ t: tok, exp: exp, sc: SCOPE })); sessionStorage.removeItem('yq_locok'); } catch (e) {} location.reload(); return; }
             try { sessionStorage.setItem('yq_gtok', JSON.stringify({ t: tok, exp: exp, sc: SCOPE })); localStorage.setItem('yq_gsigned', '1'); } catch (e) {}
             ok(tok);
           },
           error_callback: function () { bad(err('consent_required', yqT('Вхід через Google скасовано або вікно заблоковане браузером.'), yqT('Увійти через Google'))); }
         });
-        cl.requestAccessToken({ prompt: signedOnce ? '' : 'consent' });
+        cl.requestAccessToken({ prompt: switching ? 'select_account' : signedOnce ? '' : 'consent' });
       });
     });
   }
@@ -1930,7 +1947,10 @@ window.claude = (function () {
           var vr = (d.vals.valueRanges || [])[i] || {};
           var ws = XLSX.utils.aoa_to_sheet(vr.values || [[]]);
           ws['!merges'] = (sh.merges || []).map(function (m) { return { s: { r: m.startRowIndex || 0, c: m.startColumnIndex || 0 }, e: { r: (m.endRowIndex || 1) - 1, c: (m.endColumnIndex || 1) - 1 } }; });
-          XLSX.utils.book_append_sheet(wb, ws, sh.properties.title.slice(0, 31));
+          /* a workbook sheet name may not hold : \ / ? * [ ] and must be unique, max 31 chars (Google Sheets allows them) */
+          var nm = String(sh.properties.title).replace(/[:\\\/?*\[\]]/g, '_').slice(0, 31) || 'Sheet', n0 = nm, k = 1;
+          while (wb.SheetNames.indexOf(nm) >= 0) nm = n0.slice(0, 28) + '~' + (k++);
+          XLSX.utils.book_append_sheet(wb, ws, nm);
         });
         if (!wb.SheetNames.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[]]), 'empty');
         return { payload: { content: XLSX.write(wb, { type: 'base64', bookType: 'xlsx' }) } };
