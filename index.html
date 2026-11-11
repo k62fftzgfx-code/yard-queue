@@ -2075,10 +2075,10 @@ window.YQ_TASKS = (function () {
   function load(interactive) {
     if (S.off) return Promise.resolve();
     var p = S.me ? Promise.resolve() : call('me', {}, interactive).then(function (r) { S.me = r.me; S.workers = r.workers || []; S.roster = r.roster || []; });
-    return p.then(function () { return call('list', { days: 2 }); }).then(function (r) {
+    return p.then(function () { return call('list', { days: 2, empties: !!(S.me && S.me.canManage) }); }).then(function (r) {
       S.tasks = r.tasks || [];
+      if (r.empties) S.empties = r.empties;
       if (WORKER) return call('queue', {}).then(function (q) { WQ.items = q.items || []; WQ.at = q.at; });
-      if (S.me && S.me.canManage) return call('empties', {}).then(function (q) { S.empties = q.empties || []; }, function () {});
     }).then(function () { S.err = ''; S.state = 'ok'; S.needSign = false; }).catch(function (e) {
       if (e && e.error === 'no_token') { S.needSign = true; return; }
       if (e && e.error === 'not_listed') { S.off = true; S.state = 'off'; S.offEmail = e.email || ''; return; }
@@ -2101,6 +2101,7 @@ window.YQ_TASKS = (function () {
   var PN = null, PB = null, PT = null;
   var VERB = { assign: 'Зберігаю призначення', status: 'Записую статус', cancel: 'Знімаю призначення', shipAssign: 'Зберігаю призначення', shipStatus: 'Записую статус', empties: 'Зберігаю трейлер' };
   function progress(state, text) {
+    if (state === 'busy' || state === 'ok') return;  /* busy / done show on the card itself now */
     if (!PN) {
       PB = el('div', 'tk-pbar'); PN = el('div', 'tk-note'); PN.setAttribute('role', 'status'); PN.setAttribute('aria-live', 'polite');
       document.body.appendChild(PB); document.body.appendChild(PN);
@@ -2113,9 +2114,37 @@ window.YQ_TASKS = (function () {
     PB.className = 'tk-pbar' + (state === 'busy' ? ' on' : '');
     if (state !== 'busy') PT = setTimeout(function () { PN.className = 'tk-note ' + state; }, state === 'ok' ? 2600 : 6000);
   }
+  /* each card shows its own saving state on top of it — several cards can be saving at once */
+  S.saving = {};
+  function keyOf(action, data) {
+    if (!data) return '';
+    if (data.pros && data.pros.length) return data.pros.map(function (p) { return String(p).toUpperCase(); }).sort()[0];
+    if (data.trip) return String(data.trip).toUpperCase();
+    var t = data.id && S.tasks.filter(function (x) { return x.id === data.id; })[0];
+    return t ? (t.kind === 'ship' ? (t.pros || []).slice().sort()[0] || t.trip : t.trip) : '';
+  }
+  function markSaving(key, state, text) {
+    if (!key) return;
+    var o = null;
+    if (state) S.saving[key] = o = { s: state, t: text || '' }; else delete S.saving[key];
+    Array.prototype.forEach.call(document.querySelectorAll('[data-tk-key="' + key + '"]'), function (li) { paintSaving(li, key); });
+    return o;
+  }
+  /* clear later — but only if nothing newer took this card meanwhile */
+  function clearLater(key, o, msv) { setTimeout(function () { if (S.saving[key] === o) markSaving(key, null); }, msv); }
+  function paintSaving(li, key) {
+    var st = S.saving[key], badge = li.querySelector(':scope > .tk-saveb');
+    if (!st) { li.removeAttribute('data-tk-save'); if (badge) badge.remove(); return; }
+    li.setAttribute('data-tk-save', st.s);
+    if (!badge) { badge = el('div', 'tk-saveb'); li.insertBefore(badge, li.firstChild); }
+    badge.textContent = '';
+    if (st.s === 'busy') badge.appendChild(el('span', 'tk-spin'));
+    badge.appendChild(el('span', null, st.t));
+  }
   function act(action, data) {
     S.busy = true; S.err = '';
-    if (action !== 'empties') progress('busy', T(VERB[action] || 'Зберігаю') + (data && data.trip ? ' · ' + data.trip : data && data.pros ? ' · ' + data.pros.join(', ') : '') + T('… можна продовжувати'));
+    var skey = action === 'empties' ? '' : keyOf(action, data);
+    markSaving(skey, 'busy', T(VERB[action] || 'Зберігаю') + '…');
     S.warn = '';
     /* «зайнята»: someone else is writing right now — wait a moment and try once more by itself */
     var once = function () { return call(action, data, true).catch(function (e) { if (e && e.error === 'busy') return new Promise(function (ok) { setTimeout(ok, 2500); }).then(function () { return call(action, data, true); }); throw e; }); };
@@ -2136,8 +2165,8 @@ window.YQ_TASKS = (function () {
       }
       if (action !== 'empties') {
         var n = r && r.writes ? r.writes.length : 0;
-        if (S.warn) progress('warn', S.warn);
-        else progress('ok', n ? T('Готово · у борду записано клітинок: ') + n : T('Готово'));
+        if (S.warn) { progress('warn', S.warn); clearLater(skey, markSaving(skey, 'err', T('Увага — див. повідомлення')), 5000); }
+        else clearLater(skey, markSaving(skey, 'ok', n ? T('✓ Записано в борду · ') + n : T('✓ Збережено')), 2200);
       }
       setTimeout(function () { refresh(false); }, 0);
       /* the cards change at once from the cells the script wrote; the full re-read follows quietly to pick up anyone else's edits */
@@ -2145,7 +2174,7 @@ window.YQ_TASKS = (function () {
       if (b && window.YQ_BOARD_REFRESH) setTimeout(window.YQ_BOARD_REFRESH, 4000);
       return r;
     })
-      .catch(function (e) { S.err = errText(e); if (action !== 'empties') progress('err', T('Не вдалося: ') + S.err); if (e && /bad_status|not_found|has_task/.test(e.error)) return refresh(false); if (S.ctx) S.ctx.rerender(); throw e; })
+      .catch(function (e) { S.err = errText(e); if (action !== 'empties') { progress('err', T('Не вдалося: ') + S.err); clearLater(skey, markSaving(skey, 'err', T('Не вдалося')), 5000); } if (e && /bad_status|not_found|has_task/.test(e.error)) return refresh(false); if (S.ctx) S.ctx.rerender(); throw e; })
       .then(function (r) { S.busy = false; return r; }, function (e) { S.busy = false; throw e; });
   }
 
@@ -2359,6 +2388,16 @@ window.YQ_TASKS = (function () {
     '.tk-chip.tk-shipchip{display:flex;align-self:flex-start;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;padding:3px 10px}',
     '.tk-chip.tk-shipchip.work{background:color-mix(in srgb,#d9a21b 26%,var(--surface));border-color:#d9a21b;color:var(--fg)}',
     '.tk-chip.tk-shipchip.over{background:color-mix(in srgb,#d64545 26%,var(--surface));border-color:#d64545;color:var(--fg)}',
+    /* saving state on the card itself */
+    '[data-tk-save]{position:relative}',
+    '[data-tk-save]::before{content:"";position:absolute;left:10px;right:10px;top:0;height:3px;border-radius:0 0 3px 3px;z-index:3;pointer-events:none}',
+    '[data-tk-save="busy"]::before{background:linear-gradient(90deg,transparent 0,#2f8452 30%,#5cc08a 50%,#2f8452 70%,transparent 100%);background-size:40% 100%;background-repeat:no-repeat;animation:tk-run 1.1s linear infinite}',
+    '[data-tk-save="ok"]::before{background:#2f8452}',
+    '[data-tk-save="err"]::before{background:var(--hot)}',
+    '.tk-saveb{position:absolute;top:7px;left:0;right:0;margin:0 auto;width:max-content;max-width:calc(100% - 20px);overflow:hidden;z-index:4;display:flex;align-items:center;gap:6px;white-space:nowrap;padding:3px 11px 3px 8px;border-radius:999px;font-size:11.5px;font-weight:700;color:var(--fg);background:color-mix(in srgb,var(--surface) 92%,transparent);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border:1px solid #2f8452;box-shadow:0 4px 12px -6px rgba(0,0,0,.4);animation:tk-in .25s cubic-bezier(.34,1.56,.64,1) both;pointer-events:none}',
+    '[data-tk-save="ok"] .tk-saveb{background:#2f8452;color:#fff}',
+    '[data-tk-save="err"] .tk-saveb{border-color:var(--hot);color:var(--hot)}',
+    '.tk-saveb .tk-spin{width:12px;height:12px;border-width:2px}',
     /* progress bar + note */
     '.tk-pbar{position:fixed;left:0;right:0;top:0;height:3px;z-index:95;pointer-events:none;opacity:0;transition:opacity .25s;background:linear-gradient(90deg,transparent 0,#2f8452 30%,#5cc08a 50%,#2f8452 70%,transparent 100%);background-size:40% 100%;background-repeat:no-repeat}',
     '.tk-pbar.on{opacity:1;animation:tk-run 1.1s linear infinite}',
@@ -2993,6 +3032,7 @@ window.YQ_TASKS = (function () {
   function iconBtn(b, label) { b.classList.add('tk-ib'); b.title = label; b.setAttribute('aria-label', label); return b; }
   function shipRow(g, li) {
     if (!S.me || !S.me.canManage) return;
+    var k1 = g.pros.map(function (p) { return String(p).toUpperCase(); }).sort()[0]; li.setAttribute('data-tk-key', k1); if (S.saving[k1]) paintSaving(li, k1);
     var cur = shipTask(g.pros), live = cur && (cur.status === 'assigned' || cur.status === 'started');
     var head = li.querySelector('.c-top .sc-tags') || li.firstChild;
     if (cur && (live || (Date.now() - sh()) - cur.doneAt < 12 * 3600000)) {
@@ -3052,6 +3092,7 @@ window.YQ_TASKS = (function () {
   /* ---------- hook: one trailer tile ---------- */
   function row(t, li, head, body) {
     if (!S.me || t.noTrip) return;
+    var k0 = String(t.trip).toUpperCase(); li.setAttribute('data-tk-key', k0); if (S.saving[k0]) paintSaving(li, k0);
     var cur = activeFor(t.trip), mine = cur && cur.workers.indexOf(S.me.email) >= 0;
     if (cur && (S.me.canManage || mine)) {
       var nobody = !cur.workers.length;
@@ -3093,6 +3134,7 @@ window.YQ_TASKS = (function () {
   /* ---------- hook: the page rendered ---------- */
   /* the supervisor's page keeps the workers' queue fresh: only trailer, pallets, loads and "start by" leave the page */
   var pubSig = '', pubAt = 0;
+  var pubTimer = null;
   function publish(ctx) {
     if (!S.me || !S.me.canManage || !ctx.live) return;
     var real = function (v) { return v == null ? null : v - sh(); };
@@ -3103,6 +3145,8 @@ window.YQ_TASKS = (function () {
       });
     var sig = JSON.stringify(items), nowR = Date.now();
     if (sig === pubSig && nowR - pubAt < 5 * 60000) return;
+    /* at most once a minute: the workers' queue doesn't need every redraw, and each send is a request to the script */
+    if (nowR - pubAt < 60000) { if (!pubTimer) pubTimer = setTimeout(function () { pubTimer = null; if (S.ctx) publish(S.ctx); }, 60000 - (nowR - pubAt) + 50); return; }
     pubSig = sig; pubAt = nowR;
     call('pub', { items: items }).catch(function () { pubSig = ''; });
   }
