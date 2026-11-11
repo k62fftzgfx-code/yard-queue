@@ -2584,9 +2584,9 @@ window.YQ_TASKS = (function () {
         dest[b.pro] = v === 'storage' ? { to: 'storage', storage: n } : { to: 'trailer', unit: n };
       });
       if (miss.length) { msg.textContent = T('Вкажіть ') + miss.join(', '); msg.hidden = false; return; }
-      ok.disabled = true; ok.textContent = T('Зберігаю…');
       Object.keys(dest).forEach(function (k) { if (dest[k].to === 'storage') rememberSt(dest[k].storage); });
-      act('status', { id: task.id, status: 'done', keep: keep, dest: dest, shift: shiftLabel() }).then(function () { close(); if (after) after(); }, function (e) { ok.disabled = false; ok.textContent = T('Підтвердити'); msg.textContent = errText(e); msg.hidden = false; });
+      close(); if (after) after();
+      act('status', { id: task.id, status: 'done', keep: keep, dest: dest, shift: shiftLabel() }).then(function () { if (S.ctx) S.ctx.rerender(); }, function (e) { if (S.ctx) S.ctx.rerender(); return; ok.textContent = errText(e); msg.hidden = false; });
     });
   }
 
@@ -2654,16 +2654,19 @@ window.YQ_TASKS = (function () {
     var row = el('div', 'tk-row');
     var go = function (force) {
       if (!chosen.length && !(planCb && planCb.checked)) { msg.textContent = T('Виберіть 1 або 2 людей (без людей можна лише «План»).'); msg.hidden = false; return; }
-      save.disabled = true; save.textContent = T('Зберігаю…');
+      /* someone chosen is already working on another trailer: ask here, before closing */
+      if (!force) {
+        var busyP = chosen.map(function (e) { var b = activeOfWorker(e); return b && b.status === 'started' && b.trip !== String(tr.trip).toUpperCase() ? nameOf(e) + ' → ' + b.trip : ''; }).filter(String);
+        if (busyP.length) { msg.textContent = T('Вже працюють на іншому трейлері: ') + busyP.join(', '); msg.hidden = false; save.textContent = T('Все одно перевести'); save.onclick = function () { go(true); }; return; }
+      }
       var tk = tr.truck || {};
+      var pvNow = plan ? plan.value() : {};
+      /* the window closes at once; the card shows «Зберігаю…» and then «✓ Записано» (or the error) */
+      closePick(); if (S.ctx) S.ctx.rerender();
       (tr.ship ? act('shipAssign', { pros: tr.pros, workers: chosen, pallets: tr.pallets || 0, unit: plan ? plan.unit() : tr.unitOut || '', force: !!force }) : act('assign', { trip: tr.trip, workers: chosen, unit: tk.unit || '', pallets: tr.pallets || 0, loads: (tr.ships || []).length, force: !!force,
-        planning: planCb ? planCb.checked : false, yard: !!(yardCb && yardCb.checked && planCb && planCb.checked), plan: plan ? plan.value() : {} }))
-        .then(function () { if (plan) { var pv = plan.value(); S.planLocal = S.planLocal || {}; Object.keys(pv).forEach(function (k) { S.planLocal[k] = { to: pv[k].to, n: pv[k].n, trip: String(tr.trip).toUpperCase(), at: Date.now() }; if (pv[k].to === 'storage') rememberSt(pv[k].n); }); } closePick(); if (S.ctx) S.ctx.rerender(); })
-        .catch(function (e) {
-          save.disabled = false; save.textContent = planCb ? (planCb.checked ? T('Запланувати') : T('Почати')) : T('Зберегти');
-          msg.textContent = errText(e); msg.hidden = false;
-          if (e && e.error === 'busy_worker' && !force) { save.textContent = T('Все одно перевести'); save.onclick = function () { go(true); }; }
-        });
+        planning: planCb ? planCb.checked : false, yard: !!(yardCb && yardCb.checked && planCb && planCb.checked), plan: pvNow }))
+        .then(function () { if (plan) { var pv = pvNow; S.planLocal = S.planLocal || {}; Object.keys(pv).forEach(function (k) { S.planLocal[k] = { to: pv[k].to, n: pv[k].n, trip: String(tr.trip).toUpperCase(), at: Date.now() }; if (pv[k].to === 'storage') rememberSt(pv[k].n); }); } closePick(); if (S.ctx) S.ctx.rerender(); })
+        .catch(function () { /* shown on the card and in the note at the bottom */ });
     };
     var stRow = el('div', 'tk-row');
     /* outbound: «Loading» / «Loaded» live in this window too, the same as Start unload / Unload complete */
@@ -2675,19 +2678,19 @@ window.YQ_TASKS = (function () {
         var lgo = el('button', 'tk-btn', T('▶ Вантажимо')); lgo.type = 'button';
         lgo.addEventListener('click', function () {
           var u = plan.unit(); if (!u) { msg.textContent = T('Вкажіть № трейлера.'); msg.hidden = false; try { plan.focus(); } catch (e) {} return; }
-          lgo.disabled = true;
           var live0 = cur && (cur.status === 'assigned' || cur.status === 'started');
+          closePick();
           (chosen.length ? act('shipAssign', { pros: tr.pros, workers: chosen, pallets: tr.pallets || 0, unit: u }) : Promise.resolve(null))
             .then(function (r) { return act('shipStatus', Object.assign({ op: 'loading', unit: u }, shipBase(r && r.task ? r.task.id : live0 ? cur.id : null))); })
-            .then(after, fail(lgo));
+            .then(after, function () {});
         });
         stRow.appendChild(lgo);
       } else {
         var ldn = el('button', 'tk-btn', T('✓ Завантажено')); ldn.type = 'button';
         ldn.addEventListener('click', function () {
-          ldn.disabled = true;
           var live1 = cur && (cur.status === 'assigned' || cur.status === 'started');
-          act('shipStatus', Object.assign({ op: 'loaded' }, shipBase(live1 ? cur.id : null))).then(after, fail(ldn));
+          closePick();
+          act('shipStatus', Object.assign({ op: 'loaded' }, shipBase(live1 ? cur.id : null))).then(after, function () {});
         });
         stRow.appendChild(ldn);
       }
@@ -2940,8 +2943,8 @@ window.YQ_TASKS = (function () {
       var vals = ins.map(function (i, k) { return fields[k].check ? i.checked : i.value.trim(); });
       var bad = fields.filter(function (f, k) { return f.req && !vals[k]; });
       if (bad.length) { msg.textContent = T('Вкажіть ') + bad.map(function (f) { return f.label; }).join(', '); msg.hidden = false; return; }
-      ok.disabled = true; ok.textContent = T('Зберігаю…');
-      onSave(vals).then(function () { closeField(); if (S.ctx) S.ctx.rerender(); }, function (e) { ok.disabled = false; ok.textContent = T('Зберегти'); msg.textContent = errText(e); msg.hidden = false; });
+      closeField();
+      onSave(vals).then(function () { if (S.ctx) S.ctx.rerender(); }, function () { if (S.ctx) S.ctx.rerender(); });
     });
     document.body.appendChild(fpEl);
     var r = btn.getBoundingClientRect(), w = fpEl.offsetWidth;
