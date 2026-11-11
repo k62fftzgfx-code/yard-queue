@@ -2097,8 +2097,25 @@ window.YQ_TASKS = (function () {
   setInterval(function () { if (S.ctx && !S.pick && !S.busy && S.tasks.some(function (t) { return t.status === 'started'; })) S.ctx.rerender(); }, 60000);
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') refresh(false); });
 
+  /* progress: a thin running bar at the top and a small note at the bottom — «Записую в борду…» → «✓ Готово» / error */
+  var PN = null, PB = null, PT = null;
+  var VERB = { assign: 'Зберігаю призначення', status: 'Записую статус', cancel: 'Знімаю призначення', shipAssign: 'Зберігаю призначення', shipStatus: 'Записую статус', empties: 'Зберігаю трейлер' };
+  function progress(state, text) {
+    if (!PN) {
+      PB = el('div', 'tk-pbar'); PN = el('div', 'tk-note'); PN.setAttribute('role', 'status'); PN.setAttribute('aria-live', 'polite');
+      document.body.appendChild(PB); document.body.appendChild(PN);
+    }
+    clearTimeout(PT);
+    PN.className = 'tk-note on ' + state; PN.textContent = '';
+    if (state === 'busy') PN.appendChild(el('span', 'tk-spin'));
+    else PN.appendChild(el('span', 'tk-nico', state === 'ok' ? '✓' : '!'));
+    PN.appendChild(el('span', null, text));
+    PB.className = 'tk-pbar' + (state === 'busy' ? ' on' : '');
+    if (state !== 'busy') PT = setTimeout(function () { PN.className = 'tk-note ' + state; }, state === 'ok' ? 2600 : 6000);
+  }
   function act(action, data) {
     S.busy = true; S.err = '';
+    if (action !== 'empties') progress('busy', T(VERB[action] || 'Зберігаю') + (data && data.trip ? ' · ' + data.trip : data && data.pros ? ' · ' + data.pros.join(', ') : '') + T('… можна продовжувати'));
     S.warn = '';
     /* «зайнята»: someone else is writing right now — wait a moment and try once more by itself */
     var once = function () { return call(action, data, true).catch(function (e) { if (e && e.error === 'busy') return new Promise(function (ok) { setTimeout(ok, 2500); }).then(function () { return call(action, data, true); }); throw e; }); };
@@ -2117,13 +2134,18 @@ window.YQ_TASKS = (function () {
         var i = -1; S.tasks.forEach(function (t, k) { if (t.id === r.task.id) i = k; });
         if (i >= 0) S.tasks[i] = r.task; else S.tasks.push(r.task);
       }
+      if (action !== 'empties') {
+        var n = r && r.writes ? r.writes.length : 0;
+        if (S.warn) progress('warn', S.warn);
+        else progress('ok', n ? T('Готово · у борду записано клітинок: ') + n : T('Готово'));
+      }
       setTimeout(function () { refresh(false); }, 0);
       /* the cards change at once from the cells the script wrote; the full re-read follows quietly to pick up anyone else's edits */
       if (r && r.writes && r.writes.length && window.YQ_APPLY_WRITES) { try { window.YQ_APPLY_WRITES(r.writes); } catch (e) {} }
       if (b && window.YQ_BOARD_REFRESH) setTimeout(window.YQ_BOARD_REFRESH, 4000);
       return r;
     })
-      .catch(function (e) { S.err = errText(e); if (e && /bad_status|not_found|has_task/.test(e.error)) return refresh(false); if (S.ctx) S.ctx.rerender(); throw e; })
+      .catch(function (e) { S.err = errText(e); if (action !== 'empties') progress('err', T('Не вдалося: ') + S.err); if (e && /bad_status|not_found|has_task/.test(e.error)) return refresh(false); if (S.ctx) S.ctx.rerender(); throw e; })
       .then(function (r) { S.busy = false; return r; }, function (e) { S.busy = false; throw e; });
   }
 
@@ -2337,6 +2359,19 @@ window.YQ_TASKS = (function () {
     '.tk-chip.tk-shipchip{display:flex;align-self:flex-start;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;padding:3px 10px}',
     '.tk-chip.tk-shipchip.work{background:color-mix(in srgb,#d9a21b 26%,var(--surface));border-color:#d9a21b;color:var(--fg)}',
     '.tk-chip.tk-shipchip.over{background:color-mix(in srgb,#d64545 26%,var(--surface));border-color:#d64545;color:var(--fg)}',
+    /* progress bar + note */
+    '.tk-pbar{position:fixed;left:0;right:0;top:0;height:3px;z-index:95;pointer-events:none;opacity:0;transition:opacity .25s;background:linear-gradient(90deg,transparent 0,#2f8452 30%,#5cc08a 50%,#2f8452 70%,transparent 100%);background-size:40% 100%;background-repeat:no-repeat}',
+    '.tk-pbar.on{opacity:1;animation:tk-run 1.1s linear infinite}',
+    '@keyframes tk-run{0%{background-position:-40% 0}100%{background-position:140% 0}}',
+    '.tk-note{position:fixed;left:50%;bottom:18px;z-index:95;display:flex;align-items:center;gap:9px;max-width:calc(100vw - 32px);padding:9px 16px 9px 12px;border-radius:999px;font-size:13.5px;font-weight:600;color:var(--fg);background:color-mix(in srgb,var(--surface) 88%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid color-mix(in srgb,var(--fg) 14%,transparent);box-shadow:0 10px 30px -10px rgba(0,0,0,.45);transform:translate(-50%,24px);opacity:0;pointer-events:none;transition:transform .35s cubic-bezier(.34,1.56,.64,1),opacity .25s}',
+    '.tk-note.on{transform:translate(-50%,0);opacity:1}',
+    '.tk-note.ok{border-color:#2f8452}.tk-note.ok .tk-nico{background:#2f8452}',
+    '.tk-note.err{border-color:var(--hot)}.tk-note.err .tk-nico{background:var(--hot)}',
+    '.tk-note.warn{border-color:#d9a21b}.tk-note.warn .tk-nico{background:#d9a21b}',
+    '.tk-nico{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;color:#fff;font-size:12px;font-weight:800;flex:none}',
+    '.tk-spin{width:16px;height:16px;border-radius:50%;border:2px solid color-mix(in srgb,#2f8452 25%,transparent);border-top-color:#2f8452;animation:tk-rot .8s linear infinite;flex:none}',
+    '@keyframes tk-rot{to{transform:rotate(360deg)}}',
+    '@media (prefers-reduced-motion:reduce){.tk-pbar.on,.tk-spin{animation-duration:2.5s}}',
     '.tk-ec.used{border-style:dashed;background:transparent;color:var(--muted)}',
     '.tk-ec.st{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)}',
     '.tk-quick{padding:4px 0 2px}',
