@@ -553,6 +553,9 @@ button.sum:hover { filter: brightness(1.05); background: color-mix(in srgb, var(
 .shipcard .sc-when { font-size: 12px; color: var(--muted); text-align: right; margin-top: -2px; }
 .shipcard .sc-when.late { color: var(--hot); font-weight: 600; }
 .shipcard .c-ft { margin-top: auto; padding-top: 4px; }
+.grpbox { display: flex; flex-direction: column; gap: 4px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.grp-h { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.grp-r { display: flex; gap: 8px; align-items: baseline; font-size: 13px; flex-wrap: wrap; }
 
 /* loads that leave together in one delivery trailer */
 .together { border-top: 1px dashed var(--line); padding-top: 6px; display: flex; flex-direction: column; gap: 4px; }
@@ -1853,7 +1856,8 @@ window.YQ_WORKER = /[?&]worker\b/.test(location.search);
 window.YQ_GH = true;
 window.claude = (function () {
   var CLIENT_ID = '612992838874-27g3nl9ge0crvro8e20m2mda0d22u0nh.apps.googleusercontent.com';
-  var SCOPE = window.YQ_WORKER ? 'https://www.googleapis.com/auth/userinfo.email' : 'https://www.googleapis.com/auth/drive.readonly' + (window.YQ_TASKS_ON ? ' https://www.googleapis.com/auth/userinfo.email' : '');
+  /* the narrowest access that still reads the board: Google Sheets read-only (not the whole Drive); workers' link: e-mail only */
+  var SCOPE = window.YQ_WORKER ? 'https://www.googleapis.com/auth/userinfo.email' : 'https://www.googleapis.com/auth/spreadsheets.readonly' + (window.YQ_TASKS_ON ? ' https://www.googleapis.com/auth/userinfo.email' : '');
   var tok = null, exp = 0, gisP = null, signedOnce = false;
   try { var c = JSON.parse(sessionStorage.getItem('yq_gtok') || 'null'); if (c && c.exp > Date.now() + 60000 && (c.sc || '') === SCOPE) { tok = c.t; exp = c.exp; signedOnce = true; } } catch (e) {}
   try { signedOnce = signedOnce || localStorage.getItem('yq_gsigned') === '1'; } catch (e) {}
@@ -1897,17 +1901,40 @@ window.claude = (function () {
     for (var i = 0; i < u.length; i += CH) out += String.fromCharCode.apply(null, u.subarray(i, i + CH));
     return btoa(out);
   }
+  /* the board through the Sheets API (read-only): week sheets' raw values + merged cells, packed back into a workbook
+     so the page reads it exactly like the Drive export it used before */
+  var SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets/';
+  function sheetsGet(url, t) {
+    return fetch(url, { headers: { Authorization: 'Bearer ' + t }, cache: 'no-store' }).then(function (r) {
+      if (r.status === 401) { tok = null; exp = 0; try { sessionStorage.removeItem('yq_gtok'); } catch (e) {} throw needSignIn(); }
+      if (r.status === 403 || r.status === 404) throw err('no_access', yqT('У вашого Google-акаунта немає доступу до таблиці «') + (window.YQ_LOC ? YQ_LOC.id : 'MKM') + yqT(' 3.1 Inbound Ops». Попросіть власника таблиці відкрити її для вас.'));
+      if (!r.ok) throw err('server_unavailable', yqT('Google Таблиці не відповідають (') + r.status + yqT('). Спробуйте за хвилину.'));
+      return r.json();
+    });
+  }
   var mcp = {
     callTool: function (server, tool, args) {
+      var id = encodeURIComponent(args.fileId), t0;
       return token().then(function (t) {
-        var url = 'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(args.fileId) + '/export?mimeType=' + encodeURIComponent(args.exportMimeType);
-        return fetch(url, { headers: { Authorization: 'Bearer ' + t }, cache: 'no-store' });
-      }).then(function (r) {
-        if (r.status === 401) { tok = null; exp = 0; try { sessionStorage.removeItem('yq_gtok'); } catch (e) {} throw needSignIn(); }
-        if (r.status === 403 || r.status === 404) throw err('no_access', yqT('У вашого Google-акаунта немає доступу до таблиці «') + (window.YQ_LOC ? YQ_LOC.id : 'MKM') + yqT(' 3.1 Inbound Ops». Попросіть власника таблиці відкрити її для вас.'));
-        if (!r.ok) throw err('server_unavailable', yqT('Google Drive не відповідає (') + r.status + yqT('). Спробуйте за хвилину.'));
-        return r.arrayBuffer();
-      }).then(function (buf) { return { payload: { content: b64(buf) } }; });
+        t0 = t;
+        return sheetsGet(SHEETS + id + '?fields=sheets(properties(title),merges)', t);
+      }).then(function (meta) {
+        var weeks = (meta.sheets || []).filter(function (sh) { return /^\d+\s*\(/.test(sh.properties.title); });
+        if (!weeks.length) return { weeks: [], vals: { valueRanges: [] } };
+        var q = weeks.map(function (sh) { return 'ranges=' + encodeURIComponent("'" + sh.properties.title.replace(/'/g, "''") + "'"); }).join('&');
+        return sheetsGet(SHEETS + id + '/values:batchGet?' + q + '&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER&majorDimension=ROWS', t0)
+          .then(function (vals) { return { weeks: weeks, vals: vals }; });
+      }).then(function (d) {
+        var wb = XLSX.utils.book_new();
+        d.weeks.forEach(function (sh, i) {
+          var vr = (d.vals.valueRanges || [])[i] || {};
+          var ws = XLSX.utils.aoa_to_sheet(vr.values || [[]]);
+          ws['!merges'] = (sh.merges || []).map(function (m) { return { s: { r: m.startRowIndex || 0, c: m.startColumnIndex || 0 }, e: { r: (m.endRowIndex || 1) - 1, c: (m.endColumnIndex || 1) - 1 } }; });
+          XLSX.utils.book_append_sheet(wb, ws, sh.properties.title.slice(0, 31));
+        });
+        if (!wb.SheetNames.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[]]), 'empty');
+        return { payload: { content: XLSX.write(wb, { type: 'base64', bookType: 'xlsx' }) } };
+      });
     }
   };
   var downloads = {
@@ -1924,7 +1951,7 @@ window.claude = (function () {
   /* can this Google account open that board? true / false; null when not signed in yet (no window pops up for this) */
   window.YQ_GH_CAN = function (fileId) {
     if (!(tok && exp > Date.now() + 60000)) return Promise.resolve(null);
-    return fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(fileId) + '?fields=id&supportsAllDrives=true', { headers: { Authorization: 'Bearer ' + tok } })
+    return fetch(SHEETS + encodeURIComponent(fileId) + '?fields=spreadsheetId', { headers: { Authorization: 'Bearer ' + tok } })
       .then(function (r) { return r.ok ? true : (r.status === 403 || r.status === 404) ? false : null; }).catch(function () { return null; });
   };
   /* a tiny stand-in for the page's database, kept in this browser */
@@ -1971,13 +1998,13 @@ window.claude = (function () {
 })();
 
 /* ===== GitHub Pages build only: worker tasks (Google Sheet «Yard Tasks» through Apps Script) =====
-   Supervisor: «👷 Призначити» on a trailer (1–2 people), «Команда» shows who is on what.
+   Supervisor: «Призначити» on a trailer (1–2 people), «Команда» shows who is on what.
    Worker: «Моє завдання» with Почав / Завершив, or «Взяти наступний» when there is no task.
    The board itself is never written. */
 window.YQ_TASKS = (function () {
   var API = 'https://script.google.com/macros/s/AKfycbzBIJtmURkUVRyiP62YU251kXdFxC7huavlulKZIwslBKiE6wI-TKGamm8xFSjAV9P7/exec';
   if (!API || API.indexOf('__') === 0) return null;
-  var S = { me: null, workers: [], tasks: [], err: '', state: 'idle', ctx: null, pick: null, busy: false, sig: '', off: false };
+  var S = { empties: [], me: null, workers: [], tasks: [], err: '', state: 'idle', ctx: null, pick: null, busy: false, sig: '', off: false };
   var POLL_MS = 20000, WORKER = !!window.YQ_WORKER;
   var T = function (s) { return typeof yqT === 'function' ? yqT(s) : s; };
   function sh() { return window.YQ_TZ_SHIFT || 0; }
@@ -1987,8 +2014,8 @@ window.YQ_TASKS = (function () {
   function hm(srv) { var d = new Date(srv + sh()); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
   function dur(msv) { var m = Math.max(0, Math.round(msv / 60000)); return Math.floor(m / 60) + T(' год ') + pad(m % 60) + T(' хв'); }
   function first(n) { return String(n || '').split(/\s+/)[0]; }
-  function nameOf(e) { if (S.me && e === S.me.email) return S.me.name; var w = S.workers.filter(function (x) { return x.email === e; })[0]; return w ? w.name : String(e).split('@')[0]; }
-  var ERR = {
+  function nameOf(e) { if (String(e).indexOf('n:') === 0) return String(e).slice(2); if (S.me && e === S.me.email) return S.me.name; var w = S.workers.filter(function (x) { return x.email === e; })[0]; return w ? w.name : String(e).split('@')[0]; }
+  var ERR = { no_workers: 'Спершу призначте людей — без них трейлер лише в плані.',
     auth: 'Google-вхід не підтвердився для завдань. Оновіть сторінку і увійдіть ще раз.',
     not_listed: '', forbidden: 'Немає прав на цю дію.', busy: 'Таблиця завдань зайнята, спробуйте ще раз.',
     nothing_free: 'Вільних трейлерів на ярді зараз немає.', has_task: 'У вас уже є завдання.',
@@ -2012,17 +2039,18 @@ window.YQ_TASKS = (function () {
   var WQ = { items: [], at: null };
   function load(interactive) {
     if (S.off) return Promise.resolve();
-    var p = S.me ? Promise.resolve() : call('me', {}, interactive).then(function (r) { S.me = r.me; S.workers = r.workers || []; });
+    var p = S.me ? Promise.resolve() : call('me', {}, interactive).then(function (r) { S.me = r.me; S.workers = r.workers || []; S.roster = r.roster || []; });
     return p.then(function () { return call('list', { days: 2 }); }).then(function (r) {
       S.tasks = r.tasks || [];
       if (WORKER) return call('queue', {}).then(function (q) { WQ.items = q.items || []; WQ.at = q.at; });
+      if (S.me && S.me.canManage) return call('empties', {}).then(function (q) { S.empties = q.empties || []; }, function () {});
     }).then(function () { S.err = ''; S.state = 'ok'; S.needSign = false; }).catch(function (e) {
       if (e && e.error === 'no_token') { S.needSign = true; return; }
       if (e && e.error === 'not_listed') { S.off = true; S.state = 'off'; S.offEmail = e.email || ''; return; }
       S.err = errText(e);
     });
   }
-  function sigOf() { return JSON.stringify([S.tasks, S.err, S.me && S.me.email, WQ, S.needSign, S.off]); }
+  function sigOf() { return JSON.stringify([S.empties, S.tasks, S.err, S.me && S.me.email, WQ, S.needSign, S.off]); }
   function refresh(interactive) {
     return load(interactive).then(function () {
       var s = sigOf();
@@ -2036,7 +2064,14 @@ window.YQ_TASKS = (function () {
 
   function act(action, data) {
     S.busy = true; S.err = '';
-    return call(action, data, true).then(function (r) { return refresh(false).then(function () { return r; }); })
+    S.warn = '';
+    return call(action, data, true).then(function (r) {
+      var b = r && r.board;
+      if (b && b.error) S.warn = T('Борда: не вдалося записати — ') + b.error;
+      else if (b && b.manual && b.manual.length) S.warn = T('У борді в колонці «Loaded by» вже вписано іншу людину вручну, ці рядки не чіпав: ') + b.manual.join(', ');
+      else if (b && b.who && b.who.manual && b.who.manual.length) S.warn = T('У борді вже вписано іншу людину вручну, не чіпав: ') + b.who.manual.join(', ');
+      return refresh(false).then(function () { return r; });
+    })
       .catch(function (e) { S.err = errText(e); if (e && /bad_status|not_found|has_task/.test(e.error)) return refresh(false); if (S.ctx) S.ctx.rerender(); throw e; })
       .then(function (r) { S.busy = false; return r; }, function (e) { S.busy = false; throw e; });
   }
@@ -2058,17 +2093,27 @@ window.YQ_TASKS = (function () {
     var nightLike = shf.night || wd === 0;
     return { set: nightLike ? [night, 'N'] : [day], label: nightLike ? T('бригада ') + CREW_NAME[night] + T(' + постійна нічна') : T('бригада ') + CREW_NAME[day] };
   }
+  /* the board's «Loaded by» shift (column F): the crew that works now */
+  function shiftLabel() {
+    var on = S.ctx && crewsOn(S.ctx.shift); if (!on) return '';
+    var c = on.set.filter(function (x) { return x === 'A' || x === 'B'; })[0];
+    return c ? 'Shift ' + c : '';
+  }
   /* who to show: people of the current crews, anyone without a crew, and anyone busy right now */
+  /* people: the Workers list plus everyone from the board's «Loaded by» dropdown (those without a login get the id «n:Name») */
+  /* people: only the Workers list (each with a crew), split by shift — not the whole board list */
+  function people() { return S.workers.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }); }
   function teamOf(all) {
     var on = S.ctx && crewsOn(S.ctx.shift);
-    var list = S.workers.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
-    if (!on || S.allCrew) return { list: list, hidden: 0, on: on };
-    var shown = list.filter(function (w) { return !w.crew || on.set.indexOf(w.crew) >= 0 || activeOfWorker(w.email); });
-    return { list: shown, hidden: list.length - shown.length, on: on };
+    var list = people();
+    if (S.allCrew) return { list: list, hidden: 0, on: on, any: list.some(function (w) { return w.roster || w.crew; }) };
+    /* helpers (role «helper») are an option only: hidden until «+ ще», unless they are on a trailer right now */
+    var shown = list.filter(function (w) { return activeOfWorker(w.email) || (w.role !== 'helper' && (!on || !w.crew || on.set.indexOf(w.crew) >= 0)); });
+    return { list: shown, hidden: list.length - shown.length, on: on, any: true };
   }
   function crewToggle(tm, after) {
-    if (!tm.on || (!tm.hidden && !S.allCrew)) return null;
-    var b = el('button', 'tk-all', S.allCrew ? T('лише ця зміна') : T('+ ще ') + tm.hidden + T(' з інших змін')); b.type = 'button';
+    if (!tm.hidden && !S.allCrew) return null;
+    var b = el('button', 'tk-all', S.allCrew ? T('лише ця зміна') : T('+ ще ') + tm.hidden + T(' (інші зміни й опційні)')); b.type = 'button';
     b.addEventListener('click', function (ev) { ev.stopPropagation(); S.allCrew = !S.allCrew; after(); });
     return b;
   }
@@ -2077,6 +2122,24 @@ window.YQ_TASKS = (function () {
   function light(t) { return t.status === 'started' && t.startedAt && (Date.now() - sh()) - t.startedAt >= OVER_MS ? 'over' : 'work'; }
   function hmDur(v) { var m = Math.max(0, Math.round(v / 60000)); return Math.floor(m / 60) + ':' + pad(m % 60); }
   function stTxt(t) { return t.status === 'started' ? T('почав ') + hm(t.startedAt) : T('призначено ') + hm(t.assignedAt); }
+
+  /* line icons in the page's own style (stroke = text colour), instead of an emoji */
+  var ICO = {
+    print: '<path d="M7 9V3.5h10V9"/><rect x="3.5" y="9" width="17" height="8" rx="2"/><path d="M7 14h10v6.5H7z"/><path d="M17 12h.01"/>',
+    add: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M19 8v6M16 11h6"/>',
+    swap: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 7.5h5.5l-2-2M21.5 12.5H16l2 2"/>',
+    person: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c.7-3.7 3.5-5.6 7-5.6s6.3 1.9 7 5.6"/>',
+    done: '<circle cx="12" cy="12" r="9"/><path d="m7.8 12.3 2.8 2.8 5.6-5.8"/>',
+    truck: '<rect x="2.5" y="6" width="12" height="10" rx="1.5"/><path d="M14.5 9.5h3.3l2.7 3.1V16h-6"/><circle cx="6.5" cy="17.3" r="1.7"/><circle cx="17" cy="17.3" r="1.7"/>',
+    box: '<path d="M3.5 8 12 3.5 20.5 8v8L12 20.5 3.5 16z"/><path d="M3.5 8 12 12.5 20.5 8M12 12.5v8"/>',
+    play: '<circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l5.5-3.5z"/>',
+    team: '<circle cx="9" cy="8.5" r="3.2"/><path d="M3 20c.6-3.3 3-5 6-5s5.4 1.7 6 5"/><circle cx="16.5" cy="7.5" r="2.6"/><path d="M16 13.2c2.7 0 4.7 1.5 5.2 4.3"/>'
+  };
+  function ico(k) {
+    var w = document.createElement('span'); w.className = 'tk-ico'; w.setAttribute('aria-hidden', 'true');
+    w.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + ICO[k] + '</svg>';
+    return w;
+  }
 
   /* ---------- styles ---------- */
   var css = el('style');
@@ -2092,6 +2155,13 @@ window.YQ_TASKS = (function () {
     '.tk-w.over{border-color:#d64545;background:color-mix(in srgb,#d64545 22%,var(--surface-2))}',
     '.tk-all{font:600 12px var(--font-body);background:none;border:0;color:var(--accent);cursor:pointer;padding:4px 6px}',
     '.tk-crew{font-size:12px;color:var(--muted)}',
+    '.tk-opts{display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--line);padding-top:6px}',
+    '.tk-pop label.tk-o span{font-weight:600}',
+    '.tk-pop label.tk-o.dis{opacity:.5}',
+    '.tk-pop label.tk-sub-o{padding-left:22px}',
+    '.tk-pop label.tk-o{display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;row-gap:0}.tk-pop label.tk-o small{flex-basis:100%;padding-left:24px;margin:0;text-align:left;color:var(--muted);font-size:11.5px}',
+    '.tk-chip.plan{border-style:dashed;background:transparent}',
+    '.tk-opt{font-style:normal;font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:0 5px}',
     '.tk-dot{width:9px;height:9px;border-radius:50%;flex:none;background:#2f9e5b}.tk-dot.work{background:#d9a21b}.tk-dot.over{background:#d64545}',
     '.tk-chip.work{border-color:#d9a21b;background:color-mix(in srgb,#d9a21b 18%,transparent)}.tk-chip.over{border-color:#d64545;background:color-mix(in srgb,#d64545 20%,transparent)}',
     'button.tk-w{cursor:pointer;font:inherit;font-size:12.5px}.tk-w .tk-free{color:var(--muted)}.tk-w .tk-n{color:var(--muted);font-variant-numeric:tabular-nums}',
@@ -2103,15 +2173,284 @@ window.YQ_TASKS = (function () {
     '.tk-chip{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;border-radius:999px;padding:2px 9px;border:1px solid var(--accent);color:var(--fg);background:color-mix(in srgb,var(--accent) 12%,transparent)}',
     '.tk-chip.mine{background:var(--accent);color:var(--accent-fg)}',
     '.tk-as{font:600 13px var(--font-body);border-radius:9px;padding:6px 12px;border:1px dashed var(--accent);background:transparent;color:var(--accent);cursor:pointer;align-self:flex-start;min-height:34px}',
+    '.tk-dest{display:flex;flex-direction:column;gap:4px;padding:6px 4px;border-bottom:1px solid var(--line)}',
+    '.tk-dest-h{display:flex;align-items:center;gap:8px}.tk-dest-h b{font:600 13px var(--font-mono,monospace)}',
+    '.tk-u{border:1px solid var(--line);margin-left:auto}',
+    /* storage ↔ trailer switch: the thumb slides with a little overshoot and stretches on the way */
+    '.tk-sw{position:relative;display:inline-grid;grid-template-columns:32px 32px;padding:2px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line)}',
+    '.tk-thumb{position:absolute;top:2px;left:2px;width:32px;height:26px;border-radius:999px;background:var(--accent);box-shadow:0 4px 10px -4px color-mix(in srgb,var(--accent) 80%,transparent);transition:transform .42s cubic-bezier(.34,1.56,.64,1)}',
+    '.tk-sw[data-v="trailer"] .tk-thumb{transform:translateX(32px)}',
+    '.tk-sw.moving .tk-thumb{animation:tk-stretch .42s ease}',
+    '@keyframes tk-stretch{0%,100%{scale:1 1}40%{scale:1.35 .85}}',
+    '.tk-swo{position:relative;z-index:1;display:grid;place-items:center;width:32px;height:26px;border:0;background:none;border-radius:999px;color:var(--muted);cursor:pointer;transition:color .25s}',
+    '.tk-swo[aria-checked="true"]{color:var(--accent-fg)}.tk-swo .tk-ico svg{width:15px;height:15px}',
+    '.tk-sw.dis{opacity:.35}.tk-sw.dis .tk-thumb{background:var(--muted)}.tk-swo:disabled{cursor:default}',
+    '@media (prefers-reduced-motion:reduce){.tk-thumb{transition:none}.tk-sw.moving .tk-thumb{animation:none}}',
+    '.tk-seg{display:inline-flex;gap:2px;padding:2px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);margin-left:auto}',
+    '.tk-tg{position:relative;display:grid;place-items:center;width:32px;height:26px;border-radius:999px;color:var(--muted);cursor:pointer;transition:background .15s,color .15s}',
+    '.tk-tg input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}',
+    '.tk-tg .tk-ico svg{width:15px;height:15px}.tk-tg:hover{color:var(--fg)}',
+    '.tk-tg:has(input:checked){background:var(--accent);color:var(--accent-fg)}',
+    '.tk-tg:has(input:disabled){opacity:.35;cursor:default}',
+    '.tk-tg:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:1px}',
+    '.tk-lg{display:inline-flex;align-items:center;gap:3px;margin-right:10px;font-size:11.5px}.tk-lg .tk-ico svg{width:12px;height:12px}',
+    '.tk-dest{padding:5px 2px;gap:4px}.tk-dest-h{gap:6px}.tk-dest.off b{opacity:.5;text-decoration:line-through}',
+    '.tk-dest .tk-in{padding:4px 8px;font-size:12.5px}',
+    '.tk-modal .tk-cf{gap:6px}',
+    '.tk-cfr .tk-plan-i{flex-wrap:nowrap;align-items:center;gap:8px}.tk-cfr .tk-u{margin:0;flex:none}',
+    '.tk-cfn{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;min-width:0}',
+    '.tk-cfr.off .tk-cfn b{opacity:.5;text-decoration:line-through}.tk-cfr.off .tk-plan-c{opacity:.35}',
+    '.tk-cf h3{margin:0}.tk-cf .tk-sub{font-size:12px}',
+    '.tk-sel{margin-left:auto;font:inherit;font-size:12.5px;padding:3px 6px;border-radius:7px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}',
+    '.tk-dest-f{display:flex;gap:6px}.tk-in{font:inherit;font-size:13px;padding:5px 8px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);width:100%;min-width:0}',
+    '.tk-fl{display:flex;flex-direction:column;gap:3px}.tk-fl small{color:var(--muted);font-size:12px}',
+    '.shipcard .tk-acts-row{margin-top:4px}',
+    '.tk-acts-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}',
+    '.tk-as.tk-go{border-style:solid;background:var(--accent);color:var(--accent-fg);font-size:12px;padding:3px 10px 3px 8px;min-height:26px;gap:5px}',
+    '.tk-as.tk-go:hover{background:color-mix(in srgb,var(--accent) 85%,#000)}',
+    '.tk-as.tk-go .tk-ico svg{width:13px;height:13px}',
+    /* «Завершили» while a trailer is being unloaded: a soft ring breathes around it */
+    '.tk-as.tk-go.live{animation:tk-breathe 2.4s ease-in-out infinite}',
+    '@keyframes tk-breathe{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 45%,transparent)}50%{box-shadow:0 0 0 5px transparent}}',
+    /* the moment it is done: the chip pops in and the tick draws itself */
+    '.tk-chip.tk-popin{animation:tk-pop .55s cubic-bezier(.3,1.6,.5,1) both}',
+    '@keyframes tk-pop{0%{transform:scale(.6);opacity:0}100%{transform:none;opacity:1}}',
+    '.tk-chip.tk-popin .tk-ico path{stroke-dasharray:20;stroke-dashoffset:20;animation:tk-draw .5s .2s ease-out forwards}',
+    '@keyframes tk-draw{to{stroke-dashoffset:0}}',
+    '@media (prefers-reduced-motion:reduce){.tk-as.tk-go.live,.tk-chip.tk-popin,.tk-chip.tk-popin .tk-ico path{animation:none;stroke-dashoffset:0}}',
+    '.tk-as{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:3px 10px 3px 8px;min-height:26px;border-radius:8px}.tk-as .tk-ico svg{width:13px;height:13px}.tk-ico{display:inline-grid;place-items:center;flex:none}.tk-chip .tk-ico svg{width:14px;height:14px}',
+    /* empty trailers */
+    '.tk-eline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px}.tk-eline>b{font-size:13px}',
+    '.tk-eadd{display:flex;margin:0}.tk-eadd .tk-in{width:130px;padding:4px 8px;font-size:13px;font-family:var(--font-mono,monospace)}',
+    '.tk-eok{font-size:12px;color:#2f9e5b;opacity:0;transition:opacity .3s}.tk-eok.on{opacity:1;animation:tk-pop .4s cubic-bezier(.3,1.6,.5,1) both}',
+    '.tk-ecount{font:600 12px var(--font-body);background:none;border:0;color:var(--accent);cursor:pointer;padding:2px 4px}.tk-ecount:disabled{color:var(--muted);cursor:default}',
+    '.tk-emenu{display:flex;flex-direction:column;gap:2px;width:260px;max-height:320px;overflow:auto}',
+    '.tk-erow{display:flex;align-items:center;gap:8px;padding:4px 2px;border-bottom:1px solid var(--line);font-size:12px}.tk-erow b{font:700 13px var(--font-mono,monospace)}.tk-erow span{color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.tk-erow.full b,.tk-erow.gone b{opacity:.55}',
+    '.tk-emb{font:600 11.5px var(--font-body);border:1px solid var(--line);background:var(--surface-2);color:var(--fg);border-radius:6px;padding:2px 7px;cursor:pointer}.tk-emb.danger{color:var(--hot)}',
+    '.tk-btn.danger{color:var(--hot)}',
+    /* where the loads of an inbound trailer go */
+    '.tk-plan{display:flex;flex-direction:column;gap:5px;border-top:1px solid var(--line);padding-top:8px;margin-top:2px}',
+    '.tk-plan-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.tk-plan-h b{font-size:13px}.tk-plan-h small{color:var(--muted);font-size:11.5px}',
+    '.tk-plan-e{display:flex;flex-wrap:wrap;gap:4px;align-items:center}.tk-plan-e small{color:var(--muted);font-size:11.5px;margin-right:2px}',
+    '.tk-ec{font:600 12px var(--font-mono,monospace);border:1px solid #2f9e5b;background:color-mix(in srgb,#2f9e5b 14%,transparent);color:var(--fg);border-radius:7px;padding:2px 7px;cursor:pointer}',
+    '.tk-ec:active{transform:scale(.94)}',
+    '.tk-from{font-size:10.5px;color:var(--accent);border:1px dashed var(--accent);border-radius:5px;padding:0 5px}',
+    '.tk-ship-in .tk-in{width:180px;font-family:var(--font-mono,monospace);font-size:14px;padding:6px 10px}',
+    '.tk-ship-l{display:flex;flex-wrap:wrap;gap:4px}',
+    '.tk-print-ov{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.45);overflow:auto;padding:24px 12px;animation:tk-fade .2s ease both}',
+    '.tk-print-bar{max-width:820px;margin:0 auto 10px;display:flex;justify-content:flex-end;gap:8px}',
+    '.tk-print{max-width:820px;margin:0 auto;background:#fff;color:#111;border-radius:10px;padding:22px 24px;font:13px/1.35 system-ui,sans-serif;box-shadow:0 20px 50px rgba(0,0,0,.35);animation:tk-in .3s cubic-bezier(.34,1.56,.64,1) both}',
+    '.tk-print .ps-h{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:8px}',
+    '.tk-print .ps-t{font-size:22px;font-weight:800;letter-spacing:.02em}',
+    '.tk-print .ps-u{text-align:right}.tk-print .ps-u span{display:block;font-size:11px;text-transform:uppercase;color:#555}.tk-print .ps-u b{font:800 26px ui-monospace,monospace}',
+    '.tk-print .ps-m{display:flex;gap:18px;margin:4px 0 10px}',
+    '.tk-print table{width:100%;border-collapse:collapse}.tk-print th{font-size:11px;text-transform:uppercase;text-align:left;border-bottom:1.5px solid #111;padding:4px 6px}',
+    '.tk-print td{border-bottom:1px solid #bbb;padding:6px;vertical-align:top}.tk-print td.n{font:800 18px system-ui;width:28px}.tk-print td.c{text-align:center}',
+    '.tk-print td b{font:700 13.5px ui-monospace,monospace}.tk-print .sm{font-size:11px;color:#555}',
+    '.tk-print .pos{font-weight:800;border:1.5px solid #111;border-radius:4px;padding:0 4px;font-size:11px}',
+    '.tk-print td.box{width:26px}.tk-print td.box:after{content:"";display:block;width:16px;height:16px;border:1.5px solid #111;border-radius:3px}',
+    '.tk-print .ps-note{margin-top:12px;font-size:16px;line-height:1.4;border:2px solid #111;border-radius:6px;padding:8px 12px}',
+    '.tk-print .ps-chk{margin-top:8px}',
+    '.tk-print .ps-sig{margin-top:22px;font-size:14px}.tk-print .ps-sig b{font-size:15px}',
+    '@media print{body.tk-printing>*:not(.tk-print-ov){display:none!important}body.tk-printing{background:#fff!important}.tk-print-ov{position:static;background:none;padding:0;overflow:visible}.tk-print-bar{display:none}.tk-print{box-shadow:none;max-width:none;padding:0;border-radius:0;animation:none}@page{margin:12mm}}',
+    '.tk-as.tk-ib{width:36px;height:34px;min-height:34px;padding:0;justify-content:center;border-radius:10px;gap:0}',
+    '.tk-as.tk-ib .tk-ico svg{width:18px;height:18px}',
+    '.tk-acts-row{gap:6px;align-items:center}',
+    '.shipcard>.tk-acts-row{margin-top:auto;padding-top:8px;border-top:1px dashed var(--line)}',
+    '.tk-acts-row.tk-bottom{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}',
+    '.tk-acts-row .tk-as.tk-go{height:34px;min-height:34px;padding:0 12px 0 10px;font-size:13px;border-radius:10px}.tk-acts-row .tk-as.tk-go .tk-ico svg{width:17px;height:17px}',
+    '.shipcard .tk-acts-row{flex-wrap:nowrap}',
+    /* «скляні пігулки»: round glass buttons, the next step glows with a soft gradient */
+    '.tk-acts-row .tk-as{border-radius:999px;border:1px solid color-mix(in srgb,var(--fg) 14%,transparent);background:color-mix(in srgb,var(--surface) 55%,transparent);-webkit-backdrop-filter:blur(10px) saturate(1.3);backdrop-filter:blur(10px) saturate(1.3);color:var(--fg);box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 35%,transparent),0 2px 8px -4px rgba(0,0,0,.25)}',
+    '.tk-acts-row .tk-as.tk-ib{width:36px;height:36px;min-height:36px;border-radius:50%}',
+    '.tk-acts-row .tk-as:hover{background:color-mix(in srgb,var(--accent) 12%,color-mix(in srgb,var(--surface) 60%,transparent));border-color:color-mix(in srgb,var(--accent) 45%,transparent);color:var(--accent)}',
+    '.tk-acts-row .tk-as.tk-go{height:36px;min-height:36px;border-radius:999px;border:1px solid rgba(255,255,255,.12);color:#f2fbf5;font-weight:700;padding:0 15px 0 11px;background:linear-gradient(160deg,#3c9a63 0%,#2f8452 60%,#28734a 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 3px 10px -5px rgba(30,90,55,.55)}',
+    '.tk-acts-row .tk-as.tk-go:hover{color:#fff;filter:brightness(1.05);box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 5px 14px -6px rgba(30,90,55,.65)}',
+    '.tk-acts-row .tk-as.tk-go.live{animation:tk-glow 2.4s ease-in-out infinite}',
+    '@keyframes tk-glow{0%,100%{box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 3px 10px -5px rgba(30,90,55,.55)}50%{box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 0 0 4px rgba(47,132,82,.18)}}',
+    '.tk-pop .tk-btn,.tk-print-bar .tk-btn{border-radius:999px;border:1px solid color-mix(in srgb,var(--fg) 14%,transparent);background:color-mix(in srgb,var(--surface-2) 70%,transparent);box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 30%,transparent)}',
+    '.tk-pop .tk-btn.pri,.tk-print-bar .tk-btn.pri{color:#f2fbf5;border-color:rgba(255,255,255,.12);background:linear-gradient(160deg,#3c9a63 0%,#2f8452 60%,#28734a 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 3px 10px -5px rgba(30,90,55,.55)}',
+    '.tk-pop .tk-btn.danger{color:var(--hot);border-color:color-mix(in srgb,var(--hot) 35%,transparent)}',
+    '@media (prefers-reduced-motion:reduce){.tk-acts-row .tk-as.tk-go.live{animation:none}}',
+    '.tk-ec.used{border-style:dashed;background:transparent;color:var(--muted)}',
+    '.tk-ec.st{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)}',
+    '.tk-quick{padding:4px 0 2px}',
+    '.tk-pop:has(.tk-plan){width:370px}',
+    '.tk-pop.tk-wide{gap:0;width:fit-content;max-width:calc(100vw - 24px);padding:0}',
+    '.tk-cols{display:flex;align-items:stretch;min-height:0}',
+    '.tk-col{display:flex;flex-direction:column;gap:8px;padding:12px;min-width:0}.tk-cols>.tk-col:first-child{width:280px;flex:none}',
+    '.tk-col-r{flex:none;width:320px;border-left:1px solid var(--line);background:color-mix(in srgb,var(--surface-2) 45%,transparent);border-radius:0 12px 0 0;animation:tk-slide .38s .05s cubic-bezier(.34,1.56,.64,1) both}',
+    '.tk-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-top:1px solid var(--line);flex-wrap:wrap}',
+    '.tk-foot-l,.tk-foot-r{display:flex;gap:8px;align-items:center}.tk-foot .tk-btn{min-height:38px;padding:7px 14px;font-size:13.5px}',
+    '.tk-col-r .tk-plan{border-top:0;padding-top:0;margin-top:0}',
+    '@keyframes tk-slide{0%{opacity:0;transform:translateX(-10px)}100%{opacity:1;transform:none}}',
+    '.tk-plan-c{display:flex;align-items:center;gap:6px}.tk-plan-c .tk-in{width:92px}',
+    '.tk-col-r .tk-plan-i{flex-wrap:nowrap;white-space:nowrap}.tk-col-r .tk-plan-h small{display:none}',
+    '.tk-plan-r{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:3px 0;border-bottom:1px dashed var(--line)}',
+    '.tk-plan-i{display:flex;flex-wrap:wrap;align-items:center;gap:5px;font-size:12px;color:var(--muted);min-width:0}.tk-plan-i b{font:600 12.5px var(--font-mono,monospace);color:var(--fg)}',
+    '.tk-plan-r .tk-in{padding:4px 8px;font-size:12.5px;font-family:var(--font-mono,monospace)}',
+    '.tk-pos{font:700 10.5px var(--font-body);border-radius:5px;padding:1px 5px;color:#fff;background:#6b7280}.tk-pos.nose{background:#3b6fd8}.tk-pos.tail{background:#c2410c}',
+    '.tk-plan-n{font-size:11px;color:var(--muted)}',
+    '.tk-warnst{font:700 10.5px var(--font-body);font-style:normal;border-radius:5px;padding:1px 6px;color:#fff;background:#d64545;animation:tk-blink 1.6s ease-in-out infinite}',
+    '.tk-stopcard{box-shadow:inset 3px 0 0 #d64545}',
+    '@keyframes tk-blink{0%,100%{opacity:1}50%{opacity:.55}}',
+    '.tk-plan-r.warn{background:color-mix(in srgb,#d64545 9%,transparent);border-radius:8px;padding-left:4px;padding-right:4px}',
+    '.tk-pop{max-height:calc(100vh - 16px);overflow:auto}',
+    /* every button: soft lift on hover, springy squeeze on press; popovers spring in */
+    '.tk-btn,.tk-as,.tk-emb,.tk-ecount,.tk-ec,.tk-all,.tk-w,.tk-trip{transition:transform .28s cubic-bezier(.34,1.56,.64,1),box-shadow .2s,background-color .2s,color .2s,border-color .2s}',
+    '@media (hover:hover){.tk-btn:not(:disabled):hover,.tk-as:hover,.tk-emb:hover,.tk-ec:hover,button.tk-w:hover{transform:translateY(-1px);box-shadow:0 6px 14px -8px color-mix(in srgb,var(--accent) 70%,transparent)}}',
+    '.tk-btn:not(:disabled):active,.tk-as:active,.tk-emb:active,.tk-ecount:not(:disabled):active,.tk-ec:active,.tk-all:active,button.tk-w:active{transform:scale(.93);transition-duration:.08s}',
+    '.tk-pop,.tk-modal .tk-cf{animation:tk-in .32s cubic-bezier(.34,1.56,.64,1) both;transform-origin:top left}',
+    '.tk-modal{animation:tk-fade .2s ease both}',
+    '@keyframes tk-in{0%{opacity:0;transform:translateY(-6px) scale(.96)}100%{opacity:1;transform:none}}',
+    '@keyframes tk-fade{from{opacity:0}to{opacity:1}}',
+    '.tk-erow{animation:tk-in .3s cubic-bezier(.34,1.56,.64,1) both}',
+    '.tk-in{transition:border-color .2s,box-shadow .2s}.tk-in:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}',
+    '@media (prefers-reduced-motion:reduce){.tk-pop,.tk-modal,.tk-modal .tk-cf,.tk-erow,.tk-eok.on{animation:none}.tk-btn,.tk-as,.tk-emb,.tk-ec{transition:none}}',
     '.tk-as:hover{background:color-mix(in srgb,var(--accent) 10%,transparent)}',
     '.tk-pop{position:absolute;z-index:60;width:280px;max-width:calc(100vw - 24px);background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.22);padding:12px;display:flex;flex-direction:column;gap:8px}',
     '.tk-pop h3{margin:0;font-size:14px}.tk-pop .tk-sub{font-size:12px;color:var(--muted)}',
     '.tk-pop label{display:flex;align-items:center;gap:8px;font-size:13.5px;padding:6px 4px;border-radius:8px;cursor:pointer}.tk-pop label:hover{background:var(--surface-2)}',
     '.tk-pop label small{margin-left:auto;color:var(--muted);font-size:11.5px;text-align:right}.tk-pop label.dis{opacity:.5;cursor:default}',
     '.tk-pop .tk-row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}.tk-pop .tk-btn{min-height:36px;padding:7px 12px;font-size:13px}',
-    '.tk-pop .tk-btn.danger{color:var(--hot)}'
+    '.tk-pop .tk-btn.danger{color:var(--hot)}',
+    '.tk-modal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.35);display:grid;place-items:center;padding:16px}',
+    '.tk-modal .tk-cf{position:static;width:440px;max-width:calc(100vw - 24px);max-height:85vh;overflow:auto}',
+    '.tk-warn{font-size:12.5px;color:var(--warn)}'
   ].join('\n');
   document.head.appendChild(css);
+
+  /* ---------- «Завершив»: confirm which loads came out; unticked ones stay OFFLOADING on the board ---------- */
+  var cfEl = null;
+  /* storages used lately on this device: one storage often takes 2–3 loads, so it stays in the list */
+  function recentSt() { try { var a = JSON.parse(localStorage.getItem('yq_st') || '[]'); return a.filter(function (x) { return Date.now() - x.at < 36 * 3600000; }).map(function (x) { return x.u; }); } catch (e) { return S.st || []; } }
+  function rememberSt(u) {
+    u = String(u || '').trim().toUpperCase(); if (!u) return;
+    S.st = [u].concat((S.st || []).filter(function (x) { return x !== u; })).slice(0, 12);
+    try { var a = JSON.parse(localStorage.getItem('yq_st') || '[]').filter(function (x) { return x.u !== u; }); a.unshift({ u: u, at: Date.now() }); localStorage.setItem('yq_st', JSON.stringify(a.slice(0, 12))); } catch (e) {}
+  }
+  /* storage ↔ trailer switch (thumb slides with an overshoot) */
+  function mkSwitch(mode, onPick) {
+    var sw = el('div', 'tk-sw'); sw.setAttribute('role', 'radiogroup'); sw.setAttribute('aria-label', T('Куди йде'));
+    sw.appendChild(el('span', 'tk-thumb'));
+    var opt = function (k, icon, label) { var bt = el('button', 'tk-swo'); bt.type = 'button'; bt.setAttribute('role', 'radio'); bt.setAttribute('data-k', k); bt.title = label; bt.setAttribute('aria-label', label); bt.appendChild(ico(icon)); sw.appendChild(bt); return bt; };
+    var oS = opt('storage', 'box', T('Сторедж')), oT = opt('trailer', 'truck', T('Трейлер'));
+    var api = { el: sw, get: function () { return mode; }, disable: function (d) { sw.classList.toggle('dis', !!d); oS.disabled = oT.disabled = !!d; },
+      draw: function () { sw.setAttribute('data-v', mode); oS.setAttribute('aria-checked', mode === 'storage' ? 'true' : 'false'); oT.setAttribute('aria-checked', mode === 'trailer' ? 'true' : 'false'); },
+      set: function (k, quiet) { if (k === mode) return; mode = k; if (!quiet) { sw.classList.remove('moving'); void sw.offsetWidth; sw.classList.add('moving'); } api.draw(); onPick(k); } };
+    oS.addEventListener('click', function () { api.set('storage'); });
+    oT.addEventListener('click', function () { api.set('trailer'); });
+    sw.addEventListener('keydown', function (ev) { if (ev.key === 'ArrowLeft') api.set('storage'); if (ev.key === 'ArrowRight') api.set('trailer'); });
+    api.draw();
+    return api;
+  }
+  function confirmDone(task, after) {
+    if (cfEl) cfEl.remove();
+    cfEl = el('div', 'tk-modal');
+    var box = el('div', 'tk-pop tk-cf'); cfEl.appendChild(box);
+    box.appendChild(el('h3', null, T('Завершити ') + task.trip));
+    var sub = el('div', 'tk-sub', T('Завантажую вантажі з борди…')); box.appendChild(sub);
+    var list = el('div'), msg = el('div', 'tk-err'); msg.hidden = true;
+    box.appendChild(list); box.appendChild(msg);
+    var row = el('div', 'tk-row');
+    var no = el('button', 'tk-btn', T('Скасувати')); no.type = 'button';
+    var ok = el('button', 'tk-btn pri', T('Підтвердити')); ok.type = 'button'; ok.disabled = true;
+    row.appendChild(no); row.appendChild(ok); box.appendChild(row);
+    var close = function () { if (cfEl) cfEl.remove(); cfEl = null; S.pick = null; };
+    no.addEventListener('click', function () { close(); if (after) after(); });
+    cfEl.addEventListener('mousedown', function (ev) { if (ev.target === cfEl) { close(); if (after) after(); } });
+    document.body.appendChild(cfEl);
+    S.pick = 'confirm';
+    var boxes = [], lastInp = null, quick = el('div', 'tk-plan-e tk-quick');
+    var redrawQuick = function () {
+      quick.textContent = '';
+      var st = [], seen = {};
+      boxes.forEach(function (b) { var v = b.inp.value.trim().toUpperCase(); if (v && b.mode() === 'storage' && !seen[v]) { seen[v] = 1; st.push(v); } });
+      recentSt().forEach(function (v) { if (!seen[v]) { seen[v] = 1; st.push(v); } });
+      var inUse = {}; boxes.forEach(function (b) { var v = b.inp.value.trim().toUpperCase(); if (v && b.mode() === 'trailer') inUse[v] = 1; });
+      var allE = emptyUnits().filter(function (u) { return !seen[u.toUpperCase()]; });
+      var em = allE.filter(function (u) { return !inUse[u.toUpperCase()] && !plannedIn(u).length; });
+      var used = allE.filter(function (u) { return em.indexOf(u) < 0; });
+      if (!st.length && !allE.length) { quick.hidden = true; return; }
+      quick.hidden = false;
+      var chip = function (u, cls, title) {
+        var c = el('button', 'tk-ec' + (cls ? ' ' + cls : ''), u); c.type = 'button'; c.title = title;
+        c.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+        c.addEventListener('click', function () {
+          var tgt = lastInp && !lastInp.disabled ? lastInp : boxes.filter(function (b) { return !b.inp.disabled && !b.inp.value.trim(); }).map(function (b) { return b.inp; })[0];
+          if (!tgt) return; tgt.value = u;
+          var bx = boxes.filter(function (b) { return b.inp === tgt; })[0]; if (bx && cls === 'st') bx.sw.set('storage'); else if (bx) bx.sw.set('trailer');
+          redrawQuick();
+          var i = boxes.map(function (b) { return b.inp; }).indexOf(tgt), nx = boxes.slice(i + 1).filter(function (b) { return !b.inp.disabled && !b.inp.value.trim(); })[0];
+          lastInp = nx ? nx.inp : tgt; try { lastInp.focus(); } catch (e) {}
+        });
+        quick.appendChild(c);
+      };
+      if (st.length) { quick.appendChild(el('small', null, T('Сторедж:'))); st.forEach(function (u) { chip(u, 'st', T('Той самий сторедж')); }); }
+      if (em.length) { quick.appendChild(el('small', null, T('Порожні:'))); em.forEach(function (u) { chip(u, '', T('Вставити в поле')); }); }
+      if (used.length) { quick.appendChild(el('small', null, T('В роботі:'))); used.forEach(function (u) { chip(u, 'used', T('Вже має вантажі — можна додати ще')); }); }
+    };
+    box.insertBefore(quick, list);
+    call('loads', { id: task.id }, true).then(function (r) {
+      var L = r.loads || [];
+      sub.textContent = '';
+      if (L.length) sub.textContent = T('Перевірте й підтвердіть. Зніміть ✓ з вантажу, який ще не розвантажили.');
+      else sub.textContent = T('Вантажів у борді не знайдено — завдання просто закриється.');
+      var shipOf = {};
+      if (S.ctx) S.ctx.all.filter(function (t) { return t.trip.toUpperCase() === task.trip; }).concat(S.ctx.all).forEach(function (t) { (t.ships || []).forEach(function (s) { if (s.pro && !shipOf[s.pro]) shipOf[s.pro] = s; }); });
+      L.forEach(function (x) {
+        /* one compact row, the same as «Куди йдуть вантажі»: ✓ unloaded · PRO · storage ↔ trailer · number */
+        var r = el('div', 'tk-plan-r tk-cfr'), info = el('div', 'tk-plan-i');
+        var locked = /^LOADED$/i.test(x.k);
+        var cuL = el('label', 'tk-tg tk-u'), cU = el('input'); cU.type = 'checkbox'; cU.checked = !locked; cU.disabled = locked;
+        cuL.title = T('Розвантажено'); cuL.setAttribute('aria-label', T('Розвантажено')); cuL.appendChild(cU); cuL.appendChild(ico('done'));
+        info.appendChild(cuL);
+        var nm = el('div', 'tk-cfn'); nm.appendChild(el('b', null, x.pro));
+        var s0 = shipOf[x.pro];
+        if (s0) {
+          var pos = posTxt(s0.note || s0.pos), meta = el('span', null, s0.pallets ? s0.pallets + T(' пал.') : '');
+          nm.appendChild(meta);
+        }
+        if (locked) nm.appendChild(el('em', 'tk-opt', 'LOADED'));
+        if (s0 && STOP_W.test(s0.status || '')) { nm.appendChild(el('em', 'tk-warnst', s0.status)); r.classList.add('warn'); }
+        info.appendChild(nm);
+        r.appendChild(info);
+        var plan = x.plan || planOf(x.pro, task.trip) || (x.unit ? { to: 'trailer', n: x.unit } : null);
+        var ctl = el('div', 'tk-plan-c'), inp = el('input', 'tk-in'); inp.autocomplete = 'off';
+        var sync = function () {
+          var on = cU.checked && !locked;
+          sw.disable(!on); inp.disabled = !on;
+          inp.placeholder = sw.get() === 'storage' ? T('№ стореджа') : T('№ трейлера');
+          r.classList.toggle('off', !cU.checked);
+        };
+        var sw = mkSwitch(plan ? plan.to : 'trailer', function () { sync(); redrawQuick(); try { inp.focus(); } catch (e) {} });
+        ctl.appendChild(sw.el); ctl.appendChild(inp); r.appendChild(ctl);
+        inp.value = plan ? plan.n : '';
+        inp.addEventListener('focus', function () { lastInp = inp; });
+        inp.addEventListener('input', redrawQuick);
+        cU.addEventListener('change', sync);
+        sync();
+        boxes.push({ pro: x.pro, locked: locked, cU: cU, mode: sw.get, sw: sw, inp: inp }); list.appendChild(r);
+      });
+      redrawQuick();
+      ok.disabled = false;
+    }, function (e) { sub.textContent = ''; msg.textContent = errText(e); msg.hidden = false; ok.disabled = false; });
+    ok.addEventListener('click', function () {
+      var keep = [], dest = {}, miss = [];
+      boxes.forEach(function (b) {
+        if (b.locked) return;
+        if (!b.cU.checked) { keep.push(b.pro); return; }
+        var v = b.mode(), n = b.inp.value.trim();
+        if (!n) { miss.push(b.pro + ': ' + (v === 'storage' ? T('№ стореджа') : T('№ трейлера'))); return; }
+        dest[b.pro] = v === 'storage' ? { to: 'storage', storage: n } : { to: 'trailer', unit: n };
+      });
+      if (miss.length) { msg.textContent = T('Вкажіть ') + miss.join(', '); msg.hidden = false; return; }
+      ok.disabled = true; ok.textContent = T('Зберігаю…');
+      Object.keys(dest).forEach(function (k) { if (dest[k].to === 'storage') rememberSt(dest[k].storage); });
+      act('status', { id: task.id, status: 'done', keep: keep, dest: dest, shift: shiftLabel() }).then(function () { close(); if (after) after(); }, function (e) { ok.disabled = false; ok.textContent = T('Підтвердити'); msg.textContent = errText(e); msg.hidden = false; });
+    });
+  }
 
   /* ---------- the assign picker ---------- */
   var popEl = null;
@@ -2121,9 +2460,10 @@ window.YQ_TASKS = (function () {
   function openPick(btn, tr) {
     closePick();
     var cur = activeFor(tr.trip), chosen = cur ? cur.workers.slice() : [];
+    if (tr.ship && !cur) { cur = shipTask(tr.pros); chosen = cur && (cur.status === 'assigned' || cur.status === 'started') ? cur.workers.slice() : []; if (cur && cur.status === 'done') cur = null; }
     S.pick = tr.trip;
     popEl = el('div', 'tk-pop'); popEl.setAttribute('role', 'dialog');
-    popEl.appendChild(el('h3', null, T('Хто розвантажує ') + tr.trip));
+    popEl.appendChild(el('h3', null, tr.ship ? T('Вантажить · ') + tr.pros.join(', ') : T('Розвантажує · ') + tr.trip));
     popEl.appendChild(el('div', 'tk-sub', T('До 2 людей на трейлер.') + (cur ? ' ' + T('Зараз: ') + stTxt(cur) + '.' : '')));
     var list = el('div');
     var msg = el('div', 'tk-err'); msg.hidden = true;
@@ -2137,6 +2477,7 @@ window.YQ_TASKS = (function () {
         cb.disabled = full; if (full) lb.className = 'dis';
         cb.addEventListener('change', function () { if (cb.checked) chosen.push(w.email); else chosen = chosen.filter(function (x) { return x !== w.email; }); redraw(); });
         lb.appendChild(cb); lb.appendChild(el('span', null, w.name));
+        if (w.role === 'helper') lb.appendChild(el('em', 'tk-opt', T('опційно')));
         var on = activeOfWorker(w.email);
         var other = on && on.trip !== String(tr.trip).toUpperCase();
         lb.insertBefore(el('i', 'tk-dot' + (other ? ' ' + light(on) : '')), lb.lastChild);
@@ -2147,21 +2488,90 @@ window.YQ_TASKS = (function () {
       var tg = crewToggle(tm, redraw); if (tg) list.appendChild(tg);
     };
     redraw();
-    popEl.appendChild(list); popEl.appendChild(msg);
+    popEl.appendChild(list);
+    /* «Планування»: only a plan (K PENDING, no load statuses). Without it the trailer is unloaded now: YARD, OFFLOADING, LOADING / PENDING */
+    var here = !!(tr.yard || tr.working), opts = el('div', 'tk-opts'), planCb = null, yardCb = null, yl = null;
+    if (!tr.ship && (!cur || cur.status === 'assigned')) {
+      var pl = el('label', 'tk-o'); planCb = el('input'); planCb.type = 'checkbox'; planCb.checked = !here;
+      pl.appendChild(planCb); pl.appendChild(el('span', null, T('План'))); var pls = el('small'); pl.appendChild(pls);
+      opts.appendChild(pl);
+      /* the trailer stands on the yard but the board has no YARD (a dispatcher forgot): mark it, the unloading waits */
+      if (!here) {
+        var yl = el('label', 'tk-o tk-sub-o'); yardCb = el('input'); yardCb.type = 'checkbox';
+        yl.appendChild(yardCb); yl.appendChild(el('span', null, T('Уже на ярді'))); yl.appendChild(el('small', null, T('YARD у борді')));
+        opts.appendChild(yl);
+      }
+      var plSync = function () {
+        pls.textContent = planCb.checked ? T('лише план: PENDING у борді, люди — за бажанням') : T('розвантажуємо зараз: YARD + OFFLOADING');
+        save.textContent = planCb.checked ? T('Запланувати') : T('Почати');
+        if (yl) yl.hidden = !planCb.checked;
+      };
+      planCb.addEventListener('change', plSync);
+      setTimeout(plSync, 0);
+    }
+    if (opts.childNodes.length) popEl.appendChild(opts);
+    var plan = tr.ship ? shipBlock(tr, cur) : planBlock(tr);
+    if (plan) popEl.appendChild(plan.el);
+    popEl.appendChild(msg);
     var row = el('div', 'tk-row');
     var go = function (force) {
-      if (!chosen.length) { msg.textContent = T('Виберіть 1 або 2 людей.'); msg.hidden = false; return; }
+      if (!chosen.length && !(planCb && planCb.checked)) { msg.textContent = T('Виберіть 1 або 2 людей (без людей можна лише «План»).'); msg.hidden = false; return; }
       save.disabled = true; save.textContent = T('Зберігаю…');
       var tk = tr.truck || {};
-      act('assign', { trip: tr.trip, workers: chosen, unit: tk.unit || '', pallets: tr.pallets || 0, loads: (tr.ships || []).length, force: !!force })
-        .then(function () { closePick(); if (S.ctx) S.ctx.rerender(); })
+      (tr.ship ? act('shipAssign', { pros: tr.pros, workers: chosen, pallets: tr.pallets || 0, unit: plan ? plan.unit() : tr.unitOut || '', force: !!force }) : act('assign', { trip: tr.trip, workers: chosen, unit: tk.unit || '', pallets: tr.pallets || 0, loads: (tr.ships || []).length, force: !!force,
+        planning: planCb ? planCb.checked : false, yard: !!(yardCb && yardCb.checked && planCb && planCb.checked), plan: plan ? plan.value() : {} }))
+        .then(function () { if (plan) { var pv = plan.value(); S.planLocal = S.planLocal || {}; Object.keys(pv).forEach(function (k) { S.planLocal[k] = { to: pv[k].to, n: pv[k].n, trip: String(tr.trip).toUpperCase(), at: Date.now() }; if (pv[k].to === 'storage') rememberSt(pv[k].n); }); } closePick(); if (S.ctx) S.ctx.rerender(); })
         .catch(function (e) {
-          save.disabled = false; save.textContent = T('Зберегти');
+          save.disabled = false; save.textContent = planCb ? (planCb.checked ? T('Запланувати') : T('Почати')) : T('Зберегти');
           msg.textContent = errText(e); msg.hidden = false;
           if (e && e.error === 'busy_worker' && !force) { save.textContent = T('Все одно перевести'); save.onclick = function () { go(true); }; }
         });
     };
+    var stRow = el('div', 'tk-row');
+    /* outbound: «Loading» / «Loaded» live in this window too, the same as Start unload / Unload complete */
+    if (tr.ship) {
+      var shipBase = function (id) { var o = { pros: tr.pros, pallets: tr.pallets || 0, shift: shiftLabel() }; if (id) o.id = id; return o; };
+      var after = function () { closePick(); if (S.ctx) S.ctx.rerender(); };
+      var fail = function (bt) { return function (e) { bt.disabled = false; msg.textContent = errText(e); msg.hidden = false; }; };
+      if (!tr.loading) {
+        var lgo = el('button', 'tk-btn', T('▶ Вантажимо')); lgo.type = 'button';
+        lgo.addEventListener('click', function () {
+          var u = plan.unit(); if (!u) { msg.textContent = T('Вкажіть № трейлера.'); msg.hidden = false; try { plan.focus(); } catch (e) {} return; }
+          lgo.disabled = true;
+          var live0 = cur && (cur.status === 'assigned' || cur.status === 'started');
+          (chosen.length ? act('shipAssign', { pros: tr.pros, workers: chosen, pallets: tr.pallets || 0, unit: u }) : Promise.resolve(null))
+            .then(function (r) { return act('shipStatus', Object.assign({ op: 'loading', unit: u }, shipBase(r && r.task ? r.task.id : live0 ? cur.id : null))); })
+            .then(after, fail(lgo));
+        });
+        stRow.appendChild(lgo);
+      } else {
+        var ldn = el('button', 'tk-btn', T('✓ Завантажено')); ldn.type = 'button';
+        ldn.addEventListener('click', function () {
+          ldn.disabled = true;
+          var live1 = cur && (cur.status === 'assigned' || cur.status === 'started');
+          act('shipStatus', Object.assign({ op: 'loaded' }, shipBase(live1 ? cur.id : null))).then(after, fail(ldn));
+        });
+        stRow.appendChild(ldn);
+      }
+      if (!cur) popEl.appendChild(stRow);
+    }
     if (cur) {
+      /* people without a login can't press buttons themselves — the supervisor marks it for them */
+      if (cur.status === 'assigned' && !tr.ship) {
+        var sb = el('button', 'tk-btn', T('▶ Почали')); sb.type = 'button';
+        /* «Почали» takes what is ticked in this window right now (people, trailers, storages) and starts — no separate «Зберегти» first */
+        sb.addEventListener('click', function () {
+          if (!chosen.length) { msg.textContent = T('Виберіть 1 або 2 людей, щоб почати.'); msg.hidden = false; return; }
+          if (planCb) { planCb.checked = false; planCb.dispatchEvent(new Event('change')); }
+          go(false);
+        });
+        stRow.appendChild(sb);
+      }
+      var fb = el('button', 'tk-btn', T('✓ Завершили')); fb.type = 'button';
+      fb.addEventListener('click', function () { closePick(); confirmDone(cur, function () { if (S.ctx) S.ctx.rerender(); }); });
+      /* «Завершили» only once the unloading has started; a plan or an assigned trailer has nothing to finish yet */
+      if (!tr.ship && cur.status === 'started') stRow.appendChild(fb);
+      if (stRow.childNodes.length) popEl.appendChild(stRow);
       var rm = el('button', 'tk-btn danger', T('Зняти')); rm.type = 'button';
       rm.addEventListener('click', function () { rm.disabled = true; act('cancel', { id: cur.id }).then(function () { closePick(); if (S.ctx) S.ctx.rerender(); }, function (e) { rm.disabled = false; msg.textContent = errText(e); msg.hidden = false; }); });
       row.appendChild(rm);
@@ -2169,10 +2579,342 @@ window.YQ_TASKS = (function () {
     var cancel = el('button', 'tk-btn', T('Скасувати')); cancel.type = 'button'; cancel.addEventListener('click', closePick); row.appendChild(cancel);
     var save = el('button', 'tk-btn pri', T('Зберегти')); save.type = 'button'; save.onclick = function () { go(false); }; row.appendChild(save);
     popEl.appendChild(row);
+    /* wide screens: people on the left, «Куди йдуть вантажі» on the right; phones keep one column */
+    if (plan && window.innerWidth >= 760) {
+      /* two columns on top, one footer bar across the whole width: step buttons left, Скасувати / main button right */
+      var cols = el('div', 'tk-cols'), left = el('div', 'tk-col'), right = el('div', 'tk-col tk-col-r'), foot = el('div', 'tk-foot'), fl = el('div', 'tk-foot-l'), fr = el('div', 'tk-foot-r');
+      var stR = typeof stRow !== 'undefined' && stRow && stRow.parentNode === popEl ? stRow : null;
+      Array.prototype.slice.call(popEl.childNodes).forEach(function (n) {
+        if (n === plan.el) right.appendChild(n);
+        else if (n === row || n === stR) return;
+        else left.appendChild(n);
+      });
+      if (stR) Array.prototype.slice.call(stR.childNodes).forEach(function (n) { fl.appendChild(n); });
+      Array.prototype.slice.call(row.childNodes).forEach(function (n) { (/danger/.test(n.className) ? fl : fr).appendChild(n); });
+      foot.appendChild(fl); foot.appendChild(fr);
+      popEl.textContent = '';
+      cols.appendChild(left); cols.appendChild(right);
+      popEl.appendChild(cols); popEl.appendChild(foot); popEl.classList.add('tk-wide');
+    }
     document.body.appendChild(popEl);
     var r = btn.getBoundingClientRect(), w = popEl.offsetWidth;
     popEl.style.left = Math.max(12, Math.min(window.scrollX + r.left, window.scrollX + document.documentElement.clientWidth - w - 12)) + 'px';
     popEl.style.top = (window.scrollY + r.bottom + 6) + 'px';
+    var ph = popEl.offsetHeight, vh = window.innerHeight;
+    if (r.bottom + 6 + ph > vh && ph < vh) popEl.style.top = Math.max(window.scrollY + 8, window.scrollY + vh - ph - 8) + 'px';
+  }
+
+  /* ---------- empty trailers on the docks + where each load of an inbound trailer goes ---------- */
+  var STOPPED = /^(CH\/NOK|HOLD|SELL|LOADED)$/i, STOP_W = /^(CH\/NOK|HOLD|SELL)$/i;
+  function emptyUnits() { return S.empties.filter(function (x) { return x.status === 'empty'; }).map(function (x) { return x.unit; }); }
+  /* loads already planned into a delivery trailer (board column C), from the page's own data */
+  function plannedIn(unit) {
+    var u = String(unit).toUpperCase(), out = [];
+    if (!S.ctx) return out;
+    S.ctx.all.forEach(function (t) { (t.ships || []).forEach(function (s) {
+      var pk = planOf(s.pro), cu = String(pk ? (pk.to === 'trailer' ? pk.n : '') : s.unitOut || '').toUpperCase();
+      if (s.pro && cu === u && !s.loaded && out.indexOf(s.pro) < 0) out.push(s.pro);
+    }); });
+    return out;
+  }
+  /* the latest plan for a load from any trailer (a load split over several inbound trailers goes to one place) */
+  function planOf(pro, notTrip) {
+    var best = null;
+    S.tasks.forEach(function (t) {
+      if (t.status === 'cancelled' || !t.plan || !t.plan[pro] || (notTrip && t.trip === notTrip)) return;
+      var at = t.assignedAt || 0;
+      if (!best || at > best.at) best = { to: t.plan[pro].to, n: t.plan[pro].n, trip: t.trip, at: at };
+    });
+    var l = S.planLocal && S.planLocal[pro];
+    if (l && (!notTrip || l.trip !== notTrip) && (!best || l.at >= best.at)) best = l;
+    return best;
+  }
+  function posTxt(note) {
+    var p = '';
+    String(note || '').split(' · ').forEach(function (seg) { var t = seg.trim(); if (/^(NOSE|NOISE)$/i.test(t)) p = 'NOSE'; else if (/^TAIL$/i.test(t)) p = 'TAIL'; else if (/^MIDDLE$/i.test(t)) p = 'MIDDLE'; });
+    return p;
+  }
+  /* outbound: the trailer the loads go into, picked from the empties like in the load plan */
+  function shipBlock(tr, cur) {
+    var w = el('div', 'tk-plan'), hd = el('div', 'tk-plan-h');
+    hd.appendChild(el('b', null, T('Трейлер на доставку'))); hd.appendChild(el('small', null, T('→ колонка C'))); w.appendChild(hd);
+    var chips = el('div', 'tk-plan-e'), inp = el('input', 'tk-in'); inp.autocomplete = 'off'; inp.placeholder = T('№ трейлера');
+    inp.value = tr.unitOut || (cur && cur.unit) || '';
+    var draw = function () {
+      chips.textContent = '';
+      var v = inp.value.trim().toUpperCase(), all = emptyUnits().filter(function (u) { return u.toUpperCase() !== v; });
+      var E = all.filter(function (u) { return !plannedIn(u).length; }), U = all.filter(function (u) { return E.indexOf(u) < 0; });
+      var chip = function (u, used) { var c = el('button', 'tk-ec' + (used ? ' used' : ''), u); c.type = 'button'; c.addEventListener('mousedown', function (ev) { ev.preventDefault(); }); c.addEventListener('click', function () { inp.value = u; draw(); try { inp.focus(); } catch (e) {} }); chips.appendChild(c); };
+      if (E.length) { chips.appendChild(el('small', null, T('Порожні:'))); E.forEach(function (u) { chip(u); }); }
+      if (U.length) { chips.appendChild(el('small', null, T('В роботі:'))); U.forEach(function (u) { chip(u, true); }); }
+    };
+    inp.addEventListener('input', draw); draw();
+    w.appendChild(chips);
+    var r = el('div', 'tk-ship-in'); r.appendChild(inp); w.appendChild(r);
+    var list = el('div', 'tk-ship-l');
+    tr.pros.forEach(function (p) { list.appendChild(el('span', 'tk-opt', p)); });
+    w.appendChild(list);
+    if (tr.loading) w.appendChild(el('div', 'tk-plan-n', T('Зараз LOADING — натисніть «✓ Завантажено», коли закінчите.')));
+    return { el: w, value: function () { return {}; }, unit: function () { return inp.value.trim(); }, focus: function () { inp.focus(); } };
+  }
+  function planBlock(tr) {
+    var seen = {}, L = (tr.ships || []).filter(function (s) { if (!s.pro || seen[s.pro]) return false; seen[s.pro] = 1; return true; });
+    if (!L.length) return null;
+    var cur = activeFor(tr.trip), had = (cur && cur.plan) || {};
+    var w = el('div', 'tk-plan'), rows = [], last = null;
+    var hd = el('div', 'tk-plan-h'); hd.appendChild(el('b', null, T('Куди йдуть вантажі'))); hd.appendChild(el('small', null, T('трейлер → C, сторедж → E'))); w.appendChild(hd);
+    var chips = el('div', 'tk-plan-e');
+    var drawChips = function () {
+      chips.textContent = '';
+      var st = [], seen2 = {};
+      rows.forEach(function (x) { var v = x.inp.value.trim().toUpperCase(); if (v && x.sw.get() === 'storage' && !seen2[v]) { seen2[v] = 1; st.push(v); } });
+      recentSt().forEach(function (v) { if (!seen2[v]) { seen2[v] = 1; st.push(v); } });
+      /* a trailer that already got loads (here or in another plan) leaves «Порожні» and waits under «Вже в роботі» — it may take more */
+      var inUse = {}; rows.forEach(function (x) { var v = x.inp.value.trim().toUpperCase(); if (v && x.sw.get() === 'trailer') inUse[v] = 1; });
+      var all = emptyUnits().filter(function (u) { return !seen2[u.toUpperCase()]; });
+      var E = all.filter(function (u) { return !inUse[u.toUpperCase()] && !plannedIn(u).length; });
+      var U = all.filter(function (u) { return E.indexOf(u) < 0; });
+      var chip = function (u, kind, used) {
+        var c = el('button', 'tk-ec' + (kind === 'storage' ? ' st' : '') + (used ? ' used' : ''), u); c.type = 'button'; c.title = kind === 'storage' ? T('Той самий сторедж') : T('Порожній трейлер');
+        c.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+        c.addEventListener('click', function () {
+          var tg = last && !last.inp.disabled ? last : rows.filter(function (x) { return !x.inp.disabled && !x.inp.value.trim(); })[0];
+          if (!tg) return; tg.inp.value = u; tg.sw.set(kind, false);
+          var i = rows.indexOf(tg), nx = rows.slice(i + 1).filter(function (x) { return !x.inp.disabled && !x.inp.value.trim(); })[0];
+          last = nx || tg; drawChips(); try { last.inp.focus(); } catch (e) {}
+        });
+        chips.appendChild(c);
+      };
+      if (E.length) { chips.appendChild(el('small', null, T('Порожні:'))); E.forEach(function (u) { chip(u, 'trailer'); }); }
+      if (U.length) { chips.appendChild(el('small', null, T('В роботі:'))); U.forEach(function (u) { chip(u, 'trailer', true); }); }
+      if (st.length) { chips.appendChild(el('small', null, T('Сторедж:'))); st.forEach(function (u) { chip(u, 'storage'); }); }
+      if (!E.length && !U.length && !st.length) chips.appendChild(el('small', null, T('Впишіть номер вручну — збережені порожні трейлери з’являться тут.')));
+    };
+    w.appendChild(chips);
+    L.forEach(function (s) {
+      var r = el('div', 'tk-plan-r'), stopped = STOPPED.test(s.status || '') || s.loaded;
+      var info = el('div', 'tk-plan-i');
+      info.appendChild(el('b', null, s.pro));
+      /* only the number and the pallets: everything else is on the card and the loading sheet */
+      info.appendChild(el('span', null, s.pallets ? s.pallets + T(' пал.') : ''));
+      if (stopped) info.appendChild(el('em', STOPPED.test(s.status || '') && !/^LOADED$/i.test(s.status || '') ? 'tk-warnst' : 'tk-opt', s.loaded && !STOP_W.test(s.status || '') ? T('завантажено') : s.status));
+      if (STOP_W.test(s.status || '')) r.classList.add('warn');
+      r.appendChild(info);
+      /* own plan first; else where this load already goes from another of its inbound trailers; else column C */
+      var other = had[s.pro] ? null : planOf(s.pro, String(tr.trip).toUpperCase());
+      var p0 = had[s.pro] || (other ? { to: other.to, n: other.n } : s.unitOut ? { to: 'trailer', n: s.unitOut } : { to: 'trailer', n: '' });
+      if (other) r.title = T('Вибрано так само, як у ') + other.trip;
+      var inp = el('input', 'tk-in'); inp.value = p0.n; inp.disabled = stopped; inp.autocomplete = 'off';
+      var rec;
+      var sw = mkSwitch(p0.to, function (k) { inp.placeholder = k === 'storage' ? T('№ стореджа') : T('№ трейлера'); drawChips(); try { inp.focus(); } catch (e) {} });
+      inp.placeholder = p0.to === 'storage' ? T('№ стореджа') : T('№ трейлера');
+      sw.disable(stopped);
+      var ctl = el('div', 'tk-plan-c'); ctl.appendChild(sw.el); ctl.appendChild(inp);
+      r.appendChild(ctl); w.appendChild(r);
+      rec = { pro: s.pro, was: other ? { to: '', n: '' } : p0, inp: inp, sw: sw };
+      inp.addEventListener('focus', function () { last = rec; });
+      inp.addEventListener('input', drawChips);
+      rows.push(rec);
+    });
+    drawChips();
+    return { el: w, value: function () {
+      var o = {};
+      rows.forEach(function (x) { var v = x.inp.value.trim(), to = x.sw.get(); if (!x.inp.disabled && v && (v !== x.was.n || to !== x.was.to)) o[x.pro] = { to: to, n: v }; });
+      return o;
+    } };
+  }
+  function emptiesBox(box) {
+    /* one compact line: type a number + Enter; the numbers are kept quietly and picked later in «Призначити» */
+    var w = el('div', 'tk-eline');
+    w.appendChild(el('b', null, T('Порожні трейлери')));
+    var f = el('form', 'tk-eadd'), inp = el('input', 'tk-in'); inp.placeholder = T('№ + Enter'); inp.autocomplete = 'off'; inp.inputMode = 'numeric';
+    f.appendChild(inp); w.appendChild(f);
+    var ok = el('span', 'tk-eok'); w.appendChild(ok);
+    var E = S.empties.filter(function (x) { return x.status === 'empty'; });
+    var free = E.filter(function (x) { return !plannedIn(x.unit).length; }).length;
+    var lb = el('button', 'tk-ecount', E.length ? T('порожніх: ') + free + (E.length > free ? ' · ' + T('в роботі: ') + (E.length - free) : '') + ' ▾' : T('список порожній')); lb.type = 'button'; lb.disabled = !S.empties.length;
+    w.appendChild(lb);
+    f.addEventListener('submit', function (ev) {
+      ev.preventDefault(); var u = inp.value.trim().toUpperCase(); if (!u) return;
+      if (!S.empties.some(function (x) { return x.unit.toUpperCase() === u; })) S.empties.push({ unit: u, status: 'empty', at: Date.now() });
+      else S.empties.forEach(function (x) { if (x.unit.toUpperCase() === u) x.status = 'empty'; });
+      S.focusEmpty = true; S.justAdded = u; setTimeout(function () { if (S.justAdded === u) { S.justAdded = null; if (S.ctx && !S.pick) S.ctx.rerender(); } }, 1600);
+      call('empties', { op: 'add', unit: u }, true).then(function (q) { S.empties = q.empties || []; if (S.ctx) S.ctx.rerender(); }, function (e) { S.err = errText(e); if (S.ctx) S.ctx.rerender(); });
+      if (S.ctx) S.ctx.rerender();
+    });
+    if (S.justAdded) { ok.textContent = '✓ ' + S.justAdded; ok.classList.add('on'); }
+    lb.addEventListener('click', function (ev) {
+      ev.stopPropagation(); if (menuEl) { closeMenu(); return; }
+      var m = el('div', 'tk-pop tk-emenu'); menuEl = m;
+      m.appendChild(el('h3', null, T('Порожні трейлери')));
+      var order = { empty: 0, full: 1, gone: 2 };
+      S.empties.slice().sort(function (a, b) { return (order[a.status] || 0) - (order[b.status] || 0) || b.at - a.at; }).forEach(function (x) {
+        var r = el('div', 'tk-erow ' + x.status); r.style.animationDelay = Math.min(m.childNodes.length, 8) * 30 + 'ms';
+        r.appendChild(el('b', null, x.unit));
+        var pl = plannedIn(x.unit);
+        r.appendChild(el('span', null, pl.length ? pl.join(', ') : x.status === 'empty' ? T('порожній') : x.status === 'full' ? T('повний') : T('поїхав')));
+        var mk = function (op, label, cls) {
+          var o = el('button', 'tk-emb' + (cls ? ' ' + cls : ''), label); o.type = 'button'; o.title = label;
+          o.addEventListener('click', function (e2) { e2.stopPropagation(); closeMenu(); x.status = op === 'remove' ? 'removed' : op; S.empties = S.empties.filter(function (y) { return y.status !== 'removed'; }); if (S.ctx) S.ctx.rerender(); call('empties', { op: op, unit: x.unit }, true).then(function (q) { S.empties = q.empties || []; if (S.ctx) S.ctx.rerender(); }, function (e) { S.err = errText(e); refresh(false); }); });
+          r.appendChild(o);
+        };
+        if (x.status === 'empty') mk('full', T('повний')); else mk('empty', T('порожній'));
+        mk('remove', '✕', 'danger');
+        m.appendChild(r);
+      });
+      document.body.appendChild(m);
+      var rc = lb.getBoundingClientRect();
+      m.style.left = Math.max(12, Math.min(window.scrollX + rc.left, window.scrollX + document.documentElement.clientWidth - m.offsetWidth - 12)) + 'px';
+      m.style.top = (window.scrollY + rc.bottom + 6) + 'px';
+    });
+    box.appendChild(w);
+    if (S.focusEmpty) { S.focusEmpty = false; setTimeout(function () { try { inp.focus(); } catch (e) {} }, 0); }
+  }
+  var menuEl = null;
+  function closeMenu() { if (menuEl) menuEl.remove(); menuEl = null; }
+  document.addEventListener('mousedown', function (ev) { if (menuEl && !menuEl.contains(ev.target) && !ev.target.closest('.tk-ecount')) closeMenu(); });
+
+  /* ---------- loading (Відвантаження) ---------- */
+  function shipTask(pros) {
+    var P = pros.map(function (p) { return String(p).toUpperCase(); });
+    var hit = S.tasks.filter(function (t) { return t.kind === 'ship' && (t.pros || []).some(function (p) { return P.indexOf(p) >= 0; }); });
+    var act0 = hit.filter(function (t) { return t.status === 'assigned' || t.status === 'started'; })[0];
+    if (act0) return act0;
+    return hit.filter(function (t) { return t.status === 'done'; }).sort(function (a, b) { return b.doneAt - a.doneAt; })[0] || null;
+  }
+  /* a small popover with one or two fields (trailer number, storage number) */
+  var fpEl = null;
+  function closeField() { if (fpEl) fpEl.remove(); fpEl = null; S.pick = null; }
+  document.addEventListener('mousedown', function (ev) { if (fpEl && !fpEl.contains(ev.target) && !ev.target.closest('.tk-as')) closeField(); });
+  function askField(btn, title, fields, onSave) {
+    closeField(); closePick();
+    fpEl = el('div', 'tk-pop'); S.pick = 'field';
+    fpEl.appendChild(el('h3', null, title));
+    var ins = fields.map(function (f) {
+      if (f.check) { var lb = el('label', 'tk-o'), cb = el('input'); cb.type = 'checkbox'; lb.appendChild(cb); lb.appendChild(el('span', null, f.label)); fpEl.appendChild(lb); return cb; }
+      var w = el('label', 'tk-fl'); w.appendChild(el('small', null, f.label)); var i = el('input', 'tk-in'); i.value = f.value || ''; i.placeholder = f.ph || ''; w.appendChild(i); fpEl.appendChild(w); return i;
+    });
+    var msg = el('div', 'tk-err'); msg.hidden = true; fpEl.appendChild(msg);
+    var row = el('div', 'tk-row');
+    var no = el('button', 'tk-btn', T('Скасувати')); no.type = 'button'; no.addEventListener('click', closeField); row.appendChild(no);
+    var ok = el('button', 'tk-btn pri', T('Зберегти')); ok.type = 'button'; row.appendChild(ok); fpEl.appendChild(row);
+    ok.addEventListener('click', function () {
+      var vals = ins.map(function (i, k) { return fields[k].check ? i.checked : i.value.trim(); });
+      var bad = fields.filter(function (f, k) { return f.req && !vals[k]; });
+      if (bad.length) { msg.textContent = T('Вкажіть ') + bad.map(function (f) { return f.label; }).join(', '); msg.hidden = false; return; }
+      ok.disabled = true; ok.textContent = T('Зберігаю…');
+      onSave(vals).then(function () { closeField(); if (S.ctx) S.ctx.rerender(); }, function (e) { ok.disabled = false; ok.textContent = T('Зберегти'); msg.textContent = errText(e); msg.hidden = false; });
+    });
+    document.body.appendChild(fpEl);
+    var r = btn.getBoundingClientRect(), w = fpEl.offsetWidth;
+    fpEl.style.left = Math.max(12, Math.min(window.scrollX + r.left, window.scrollX + document.documentElement.clientWidth - w - 12)) + 'px';
+    fpEl.style.top = (window.scrollY + r.bottom + 6) + 'px';
+    if (ins[0] && ins[0].focus) ins[0].focus();
+  }
+  /* hook: one card on the Відвантаження tab (one load or a group leaving together) */
+  /* ---------- loading sheet: what goes into the outbound trailer, where each shipment sits now, and in what order ---------- */
+  function esc(v) { return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function whereNow(x, fmt) {
+    /* storage chosen in a plan, else the board's E per part, else still inside its inbound trailer; same place = one entry with its pallets added up */
+    var s = x.s, pk = planOf(s.pro), acc = [], add = function (label, pal) {
+      var e = acc.filter(function (a) { return a.l === label; })[0];
+      if (e) e.p += pal || 0; else acc.push({ l: label, p: pal || 0 });
+    };
+    var parts = x.parts || [];
+    parts.forEach(function (p) {
+      if (p.storage) add(fmt.stor(p.storage), p.pallets);
+      else if (pk && pk.to === 'storage') add('Storage ' + pk.n, p.pallets);
+      else if (p.trip) add(T('ще в трейлері ') + p.trip, p.pallets);
+    });
+    if (!acc.length && s.storage) add(fmt.stor(s.storage), x.total);
+    if (!acc.length && pk && pk.to === 'storage') add('Storage ' + pk.n, x.total);
+    if (!acc.length) return '—';
+    return acc.map(function (a) { return a.l + (acc.length > 1 && a.p ? ' (' + a.p + T(' пал.') + ')' : ''); }).join(', ');
+  }
+  function loadOrder(items) {
+    /* 1 = first in, to the nose. NOSE first, TAIL last; between them the later delivery goes deeper (loaded earlier) */
+    var rank = function (x) { var p = posTxt(x.s.note || x.s.pos); return p === 'NOSE' ? 0 : p === 'TAIL' ? 2 : 1; };
+    return items.slice().sort(function (a, b) {
+      return rank(a) - rank(b) || ((b.s.deliver || 0) - (a.s.deliver || 0)) || ((b.s.ready || 0) - (a.s.ready || 0)) || (b.total - a.total);
+    });
+  }
+  function printSheet(g) {
+    var fmt = g.fmt || { time: function (v) { return new Date(v).toLocaleString(); }, stor: function (v) { return v; } };
+    var items = loadOrder(g.items), sum = items.reduce(function (q, x) { return q + (x.total || 0); }, 0);
+    var st0 = shipTask(g.pros) || {}, unit = g.unitOut || st0.unit || '';
+    var crew = st0.status && st0.status !== 'cancelled' ? (st0.workers || []).map(nameOf).join(', ') : '';
+    var first0 = items[0].s, drv = items.map(function (x) { return x.s.driver; }).filter(Boolean)[0] || '';
+    var now = new Date(Date.now() + 0), stamp = pad(now.getMonth() + 1) + '/' + pad(now.getDate()) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+    var rowsH = items.map(function (x, i) {
+      var s = x.s, pos = posTxt(s.note || s.pos);
+      var when = s.basis === 'ready' ? 'MBR ' + fmt.time(s.ready) : s.deliver ? T('Дост. ') + fmt.time(s.deliver) : '';
+      var extra = String(s.note || '').split(' · ').filter(function (t) { return t && !/^(NOSE|NOISE|TAIL|MIDDLE)$/i.test(t.trim()); }).join(' · ');
+      return '<tr><td class="n">' + (i + 1) + '</td><td><b>' + esc(s.pro) + '</b><div class="sm">' + esc(s.customer || '') + '</div></td>' +
+        '<td class="c">' + esc(x.total) + '</td><td>' + esc(whereNow(x, fmt)) + '</td>' +
+        '<td class="c">' + (pos ? '<span class="pos">' + pos + '</span>' : '') + '</td>' +
+        '<td>' + esc(s.to || '') + (extra ? '<div class="sm">' + esc(extra) + '</div>' : '') + '</td><td>' + esc(when) + '</td><td class="box"></td></tr>';
+    }).join('');
+    var html = '<div class="ps-h"><div><div class="ps-t">' + T('Лист завантаження') + '</div><div class="sm">' + esc(stamp) + ' · ' + esc(shiftLabel()) + ' · ' + esc(loc()) + '</div></div>' +
+      '<div class="ps-u"><span>' + T('Трейлер') + '</span><b>' + esc(unit || '________') + '</b></div></div>' +
+      '<div class="ps-m"><span>' + T('Вантажів: ') + '<b>' + items.length + '</b></span><span>' + T('Палет: ') + '<b>' + sum + '</b></span>' + (drv ? '<span>' + T('Водій: ') + '<b>' + esc(drv) + '</b></span>' : '') + '</div>' +
+      '<table><thead><tr><th>#</th><th>PRO / ' + T('Клієнт') + '</th><th>' + T('Пал.') + '</th><th>' + T('Де стоїть') + '</th><th>' + T('Поз.') + '</th><th>' + T('Куди') + '</th><th>' + T('Час') + '</th><th>✓</th></tr></thead><tbody>' + rowsH + '</tbody></table>' +
+      (items.length > 1 ? '<div class="ps-note"><b>' + T('Порядок завантаження:') + '</b> ' + T('№1 вантажимо першим — до кабіни (NOSE). Останній — до дверей (TAIL). Хто вивантажується раніше — ближче до дверей.') + '</div>' : '') +
+      '<div class="ps-note ps-chk"><b>' + T('Перевір перед відправкою:') + '</b> ☐ ' + T('документи') + ' &nbsp; ☐ ' + T('пломба (seal)') + ' &nbsp; ☐ ' + T('завантажено — звір з фото') + '</div>' +
+      '<div class="ps-sig">' + T('Завантажили: ') + (crew ? '<b>' + esc(crew) + '</b>' : '________________________') + '</div>';
+    var ov = el('div', 'tk-print-ov'), sheet = el('div', 'tk-print'); sheet.innerHTML = html;
+    var bar = el('div', 'tk-print-bar'), pr = el('button', 'tk-btn pri', T('Друкувати')), cl = el('button', 'tk-btn', T('Закрити'));
+    pr.type = cl.type = 'button'; bar.appendChild(cl); bar.appendChild(pr);
+    ov.appendChild(bar); ov.appendChild(sheet); document.body.appendChild(ov); document.body.classList.add('tk-printing');
+    var close = function () { ov.remove(); document.body.classList.remove('tk-printing'); };
+    cl.addEventListener('click', close);
+    ov.addEventListener('mousedown', function (ev) { if (ev.target === ov) close(); });
+    pr.addEventListener('click', function () { try { window.print(); } catch (e) { pr.textContent = T('Ctrl+P / ⌘P'); } });
+  }
+  /* card buttons are icons only: the name sits in the tooltip and for screen readers */
+  function iconBtn(b, label) { b.classList.add('tk-ib'); b.title = label; b.setAttribute('aria-label', label); return b; }
+  function shipRow(g, li) {
+    if (!S.me || !S.me.canManage) return;
+    var cur = shipTask(g.pros), live = cur && (cur.status === 'assigned' || cur.status === 'started');
+    var head = li.querySelector('.c-top .sc-tags') || li.firstChild;
+    if (cur && (live || (Date.now() - sh()) - cur.doneAt < 12 * 3600000)) {
+      var txt = cur.workers.length ? cur.workers.map(function (e) { return first(nameOf(e)); }).join(', ') : '';
+      var label = cur.status === 'started' ? T('вантажать з ') + hm(cur.startedAt) : cur.status === 'done' ? (/^Сторедж/.test(cur.note) ? cur.note.split(' · ')[0] : T('завантажено ') + hm(cur.doneAt)) : T('призначено');
+      var c = el('span', 'tk-chip ' + (cur.status === 'done' ? '' : light(cur)), (txt ? txt + ' · ' : '') + label);
+      c.insertBefore(ico(cur.status === 'done' ? 'done' : cur.workers.length > 1 ? 'team' : 'person'), c.firstChild);
+      head.appendChild(c);
+    }
+    if (g.stopped) {
+      /* CH / NOK, HOLD, SELL: the dispatchers' warning — not ours to change, but it must stand out */
+      var ws = g.statuses.filter(function (x) { return STOP_W.test(x); }).filter(function (x, i, a) { return a.indexOf(x) === i; });
+      head.appendChild(el('span', 'tk-warnst', '⚠ ' + ws.join(', ')));
+      li.classList.add('tk-stopcard');
+      return;
+    }
+    var loading = (cur && cur.status === 'started') || g.statuses.some(function (x) { return /^LOADING$/i.test(x); });
+    var bar = el('div', 'tk-acts-row');
+    var b = el('button', 'tk-as'); b.type = 'button';
+    b.appendChild(ico(live ? 'swap' : 'add')); iconBtn(b, live ? T('Змінити людей') : T('Призначити'));
+    b.addEventListener('click', function (ev) { ev.stopPropagation(); if (S.pick) { closePick(); closeField(); } openPick(b, { ship: true, trip: g.key, pros: g.pros, pallets: g.total, unitOut: g.unitOut, loading: loading }); });
+    bar.appendChild(b);
+    /* the next step right on the card, like «Unload complete» on an inbound tile: once it is LOADING — «✓ Loaded» */
+    if (loading) {
+      var db = el('button', 'tk-as tk-go live'); db.type = 'button'; db.appendChild(ico('done')); db.appendChild(document.createTextNode(T('Завантажено'))); db.title = T('Завершили завантаження');
+      db.addEventListener('click', function (ev) {
+        ev.stopPropagation(); db.disabled = true;
+        var o = { op: 'loaded', pros: g.pros, pallets: g.total, shift: shiftLabel() }; if (live) o.id = cur.id;
+        act('shipStatus', o).then(function () { if (S.ctx) S.ctx.rerender(); }, function () { db.disabled = false; if (S.ctx) S.ctx.rerender(); });
+      });
+      bar.appendChild(db);
+    }
+    /* Start loading is in the «Призначити» window, the same as Start unload */
+    if (g.items && g.items.length) {
+      var pb = el('button', 'tk-as tk-prbtn'); pb.type = 'button'; pb.title = T('Друк листа завантаження');
+      pb.appendChild(ico('print')); iconBtn(pb, T('Друк листа завантаження'));
+      pb.addEventListener('click', function (ev) { ev.stopPropagation(); printSheet(g); });
+      bar.appendChild(pb);
+    }
+    /* no «На сторедж» here: a load on this tab has already been put away (storage is chosen in «Завершили» on unloading) */
+    li.appendChild(bar);
   }
 
   /* ---------- hook: one trailer tile ---------- */
@@ -2180,18 +2922,38 @@ window.YQ_TASKS = (function () {
     if (!S.me || t.noTrip) return;
     var cur = activeFor(t.trip), mine = cur && cur.workers.indexOf(S.me.email) >= 0;
     if (cur && (S.me.canManage || mine)) {
-      var c = el('span', 'tk-chip ' + light(cur) + (mine ? ' mine' : ''), '👷 ' + (mine && cur.workers.length === 1 ? T('Ви') : cur.workers.map(function (e) { return e === S.me.email ? T('Ви') : first(nameOf(e)); }).join(', ')) + ' · ' + stTxt(cur));
+      var nobody = !cur.workers.length;
+      var c = el('span', 'tk-chip ' + (nobody ? 'plan' : light(cur)) + (mine ? ' mine' : ''), nobody ? T('План без людей · ') + hm(cur.assignedAt) : (mine && cur.workers.length === 1 ? T('Ви') : cur.workers.map(function (e) { return e === S.me.email ? T('Ви') : first(nameOf(e)); }).join(', ')) + ' · ' + (cur.status === 'assigned' && !t.yard && !t.working ? T('заплановано') : stTxt(cur)));
+      c.insertBefore(ico(nobody ? 'box' : cur.workers.length > 1 ? 'team' : 'person'), c.firstChild);
       head.appendChild(c);
     }
     var fin = !cur && !t.unloaded ? doneFor(t.trip) : null;
     if (fin && (S.me.canManage || fin.workers.indexOf(S.me.email) >= 0)) {
-      var fc = el('span', 'tk-chip', T('✓ Розвантажили: ') + fin.workers.map(function (e) { return first(nameOf(e)); }).join(', ') + ' · ' + hm(fin.doneAt));
+      var fresh = (Date.now() - sh()) - fin.doneAt < 4000;
+      var fc = el('span', 'tk-chip' + (fresh ? ' tk-popin' : ''), T('Розвантажили: ') + fin.workers.map(function (e) { return first(nameOf(e)); }).join(', ') + ' · ' + hm(fin.doneAt));
+      fc.insertBefore(ico('done'), fc.firstChild);
       fc.title = T('Позначено в завданнях. На борді статус ще не UNLOADED.'); head.appendChild(fc);
     }
-    if (S.me.canManage && !t.unloaded && !t.allLoaded && (t.yard || t.working)) {
-      var b = el('button', 'tk-as', cur ? T('👷 Змінити людей') : T('👷 Призначити')); b.type = 'button';
+    if (S.me.canManage && !t.unloaded && !t.allLoaded) {
+      var b = el('button', 'tk-as'); b.type = 'button';
+      var hasP = cur && cur.workers.length;
+      b.appendChild(ico(hasP ? 'swap' : 'add')); iconBtn(b, hasP ? T('Змінити людей') : T('Призначити'));
       b.addEventListener('click', function (ev) { ev.stopPropagation(); if (S.pick === t.trip) closePick(); else openPick(b, Object.assign({ truck: (S.ctx && S.ctx.truckOf) ? S.ctx.truckOf(t) : {} }, t)); });
-      body.insertBefore(b, body.firstChild);
+      /* the next step right on the tile: «Почали» when people are assigned on the yard, «Завершили» while unloading */
+      var bar = el('div', 'tk-acts-row'); bar.appendChild(b);
+      if (cur && cur.status === 'started') {
+        var fz = el('button', 'tk-as tk-go live'); fz.type = 'button';
+        fz.appendChild(ico('done')); fz.appendChild(document.createTextNode(T('Завершили'))); fz.title = T('Завершили розвантаження');
+        fz.addEventListener('click', function (ev) { ev.stopPropagation(); confirmDone(cur, function () { if (S.ctx) S.ctx.rerender(); }); });
+        bar.appendChild(fz);
+      } else if (cur && cur.status === 'assigned' && cur.workers.length) {
+        /* «Почали» writes YARD itself, so it shows for a planned trailer too */
+        var go = el('button', 'tk-as tk-go'); go.type = 'button';
+        go.appendChild(ico('play')); go.appendChild(document.createTextNode(T('Почали'))); go.title = T('Почали розвантаження');
+        go.addEventListener('click', function (ev) { ev.stopPropagation(); go.disabled = true; act('status', { id: cur.id, status: 'started' }).then(function () { if (S.ctx) S.ctx.rerender(); }, function () { go.disabled = false; if (S.ctx) S.ctx.rerender(); }); });
+        bar.appendChild(go);
+      }
+      bar.classList.add('tk-bottom'); body.appendChild(bar);  /* always at the bottom of the tile, the same place everywhere */
     }
   }
 
@@ -2212,6 +2974,7 @@ window.YQ_TASKS = (function () {
     call('pub', { items: items }).catch(function () { pubSig = ''; });
   }
   function render(ctx) {
+    if (WORKER) return;
     S.ctx = ctx;
     try { publish(ctx); } catch (e) {}
     if (!S.me && S.state === 'idle' && !S.off) { S.state = 'loading'; refresh(false).then(function () { if (S.state === 'loading') S.state = 'idle'; }); }
@@ -2245,7 +3008,7 @@ window.YQ_TASKS = (function () {
           acts.appendChild(st);
         } else {
           var dn = el('button', 'tk-btn pri', T('✓ Завершив')); dn.type = 'button'; dn.disabled = S.busy;
-          dn.addEventListener('click', function () { dn.disabled = true; act('status', { id: my.id, status: 'done' }).then(ctx.rerender, ctx.rerender); });
+          dn.addEventListener('click', function () { confirmDone(my, ctx.rerender); });
           acts.appendChild(dn);
         }
         m.appendChild(acts);
@@ -2287,8 +3050,10 @@ window.YQ_TASKS = (function () {
       var tg2 = crewToggle(tm, function () { ctx.rerender(); }); if (tg2) team.appendChild(tg2);
       if (!S.workers.length) team.appendChild(el('span', 'tk-free', T('Додайте людей у аркуш Workers таблиці «Yard Tasks».')));
       box.appendChild(team);
+      emptiesBox(box);
     }
     if (S.err) box.appendChild(el('div', 'tk-err', S.err));
+    if (S.warn) box.appendChild(el('div', 'tk-warn', S.warn));
     if (!box.childNodes.length) box.hidden = true;
   }
   /* trailers on the yard waiting for unloading, in the page's own priority order, without people yet */
@@ -2303,7 +3068,7 @@ window.YQ_TASKS = (function () {
   function bootWorker() {
     document.title = 'Yard Queue · ' + T('Працівник');
     var root = el('main', 'wk-root');
-    Array.prototype.forEach.call(document.body.children, function (c) { if (c.tagName !== 'SCRIPT' && c.tagName !== 'STYLE') c.style.display = 'none'; });
+    Array.prototype.forEach.call(document.body.children, function (c) { if (c.tagName !== 'SCRIPT' && c.tagName !== 'STYLE' && !/\bdemo-/.test(c.className)) c.style.display = 'none'; });
     document.body.appendChild(root);
     var wcss = el('style');
     wcss.textContent = [
@@ -2370,7 +3135,7 @@ window.YQ_TASKS = (function () {
         f.appendChild(el('span', null, my.status === 'started' ? T('почав ') + fmt(my.startedAt) : T('призначено ') + fmt(my.assignedAt)));
         card.appendChild(f);
         if (my.status === 'assigned') card.appendChild(btn(T('▶ Почав'), 'pri', function () { act('status', { id: my.id, status: 'started' }).then(done, done); }));
-        else card.appendChild(btn(T('✓ Завершив'), 'pri', function () { act('status', { id: my.id, status: 'done' }).then(done, done); }));
+        else card.appendChild(btn(T('✓ Завершив'), 'pri', function (b) { b.disabled = false; confirmDone(my, done); }));
       } else {
         var free = Q.filter(function (x) { return x.st === 'yard' && !activeFor(x.trip) && !doneFor(x.trip); });
         card.appendChild(el('div', null, free.length ? T('Завдання немає. Наступний за пріоритетом: ') + free[0].trip + ' · ' + free[0].pallets + T(' пал.') : T('Завдання немає, і вільних трейлерів на ярді зараз немає.')));
@@ -2380,6 +3145,7 @@ window.YQ_TASKS = (function () {
       }
       if (myDone.length) card.appendChild(el('div', 'wk-note', T('За останні 12 год розвантажено: ') + myDone.length));
       if (S.err) card.appendChild(el('div', 'tk-err', S.err));
+      if (S.warn) card.appendChild(el('div', 'tk-warn', S.warn));
       root.appendChild(card);
 
       var qc = el('div', 'wk-card'); qc.appendChild(el('h2', null, T('Черга на ярді') + ' · ' + Q.length));
@@ -2410,7 +3176,7 @@ window.YQ_TASKS = (function () {
     refresh(false).then(draw, draw);
   }
   if (WORKER) bootWorker();
-  return { row: row, render: render, _s: S };
+  return { row: row, shipRow: shipRow, render: render, _s: S };
 })();
 
 (function () {
@@ -2648,7 +3414,7 @@ window.YQ_TASKS = (function () {
     });
   }
   /* Loaded = status LOADED / CH-OK / CH-NOK. "Loaded by" alone is not proof: it is often filled when the shift is assigned, before loading. */
-  function isLoaded(s) { return /^(LOADED|CH\/N?OK)$/i.test(s.status || ''); }
+  function isLoaded(s) { return /^(LOADED|CH\/OK)$/i.test(s.status || ''); }  /* CH/NOK is a warning: the load still shows in «До відвантаження» */
   function stateOf(o) { return o.unloaded ? yqT('розвантажено') : o.working ? yqT('розвантажується') : o.yard ? yqT('на ярді') : /^PN$/i.test(o.eta || '') ? 'PN' : o.eta ? yqT('їде, ') + fmtEta(o) : yqT('ETA не вказано'); }
   function hm(ts) { var d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
   /* "THU 2-6PM" -> "Чт 14:00–18:00"; text the board wrote in another form stays as written. */
@@ -3187,7 +3953,7 @@ window.YQ_TASKS = (function () {
     /* Expanding-label tabs: the active tab opens into a pill with its name, the others shrink to an icon with a count.
        The buttons are built once and only updated, so the width change animates. */
     var tb = $('tabs');
-    [['unload', yqT('Розвантаження'), null], ['ship', yqT('До відвантаження'), list.length], ['check', yqT('Перевірка борди'), chk.length], ['done', yqT('Готово'), doneN]].forEach(function (d) {
+    [['unload', yqT('Розвантаження'), null], ['ship', yqT('Відвантаження'), list.length], ['check', yqT('Перевірка борди'), chk.length], ['done', yqT('Готово'), doneN]].forEach(function (d) {
       var b = tb.querySelector('[data-k="' + d[0] + '"]');
       if (!b) {
         b = el('button', 'chip tabx'); b.type = 'button'; b.setAttribute('data-k', d[0]);
@@ -3215,7 +3981,20 @@ window.YQ_TASKS = (function () {
     var ol = $('ship'); ol.textContent = '';
     if (!list.length) ol.appendChild(el('li', 'empty', yqT('Зараз немає розібраних вантажів з дедлайном, що чекають відвантаження.')));
     ol.className = 'cards shipcards';
-    list.forEach(function (x) {
+    /* loads that leave together share one card: merged Status / Must be ready / driver cells on the board,
+       or the same delivery trailer already written in Unit number (C) */
+    var par = list.map(function (_, i) { return i; }), keyAt = {};
+    var root = function (i) { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+    list.forEach(function (x, i) {
+      var ks = [];
+      if (x.s.outGroup) ks.push('g:' + x.s.outGroup);
+      var u = String(x.s.unitOut || '').replace(/\s+/g, '').toUpperCase(); if (u) ks.push('u:' + u);
+      ks.forEach(function (k) { if (keyAt[k] == null) keyAt[k] = i; else par[root(i)] = root(keyAt[k]); });
+    });
+    var groups = {}, order = [];
+    list.forEach(function (x, i) { var r = root(i); if (!groups[r]) { groups[r] = []; order.push(r); } groups[r].push(x); });
+    order.forEach(function (r) {
+      var grp = groups[r].sort(function (p, q) { return p.s.ready - q.s.ready; }), x = grp[0];
       var s = x.s, diff = s.ready - now, staged = /^(PENDING|LOADING|IN LINE)$/i.test(s.status || '');
       var li = el('li', 'card shipcard' + (diff < 0 ? ' late' : diff < 3 * 3600000 ? ' soon' : '') + (s.basis === 'ready' ? ' has-mbr' : ''));
       var top = el('div', 'c-top');
@@ -3223,10 +4002,10 @@ window.YQ_TASKS = (function () {
       if (staged) tl.appendChild(el('span', 'st' + (/^LOADING$/i.test(s.status) ? ' loading' : ''), String(s.status).toUpperCase()));
       if (!seenMap[s.pro]) tl.appendChild(el('span', 'newtag', yqT('НОВЕ')));
       top.appendChild(tl);
-      top.appendChild(el('span', 'pal', x.total + yqT(' пал.')));
+      top.appendChild(el('span', 'pal', (grp.length > 1 ? grp.reduce(function (q, m) { return q + m.total; }, 0) : x.total) + yqT(' пал.')));
       li.appendChild(top);
       var nm = el('div', 'c-name');
-      nm.appendChild(el('span', 'pro', s.pro));
+      nm.appendChild(el('span', 'pro', grp.length > 1 ? grp.map(function (m) { return m.s.pro; }).join(' + ') : s.pro));
       if (s.hot) nm.appendChild(el('span', 'hotpill', 'HOT'));
       if (s.customer) nm.appendChild(el('span', 'cust', ' · ' + s.customer));
       li.appendChild(nm);
@@ -3246,9 +4025,27 @@ window.YQ_TASKS = (function () {
       row(yqT('у трейлер ').trim(), unitTxt(s.unitOut));
       row(yqT('Водій'), s.driver);
       li.appendChild(kv);
-      var pbS = partnersBlock(s); if (pbS) li.appendChild(pbS);
+      /* in a group card the partners already sit in «Їдуть разом»; show the block only for partners still missing */
+      var inGrp = {}; grp.forEach(function (m) { inGrp[m.s.pro] = 1; });
+      var pbS = partnersOf(s).every(function (o) { return inGrp[o.pro]; }) && grp.length > 1 ? null : partnersBlock(s); if (pbS) li.appendChild(pbS);
       var npS = noteParts(s.note); if (npS.other.length) li.appendChild(el('div', 'c-note', '📝 ' + npS.other.join(' · ')));
       if (x.parts.length > 1) li.appendChild(el('div', 'c-ft', yqT('розібрано з: ') + x.parts.map(function (p) { return p.trip + ' (' + p.pallets + ')'; }).join(', ')));
+      /* a group leaving together: every load of it, with its own pallets, customer and destination */
+      if (grp.length > 1) {
+        var gb = el('div', 'grpbox'); gb.appendChild(el('div', 'grp-h', yqT('Їдуть разом · ') + grp.length + yqT(' вантажі')));
+        grp.forEach(function (m) {
+          var gr = el('div', 'grp-r'); gr.appendChild(el('b', 'tg-pro', m.s.pro));
+          gr.appendChild(el('span', 'tg-meta', [m.total + yqT(' пал.'), m.s.customer || '', m.s.to ? '→ ' + m.s.to : '', /^(PENDING|LOADING|IN LINE)$/i.test(m.s.status || '') ? String(m.s.status).toUpperCase() : ''].filter(String).join(' · ')));
+          gb.appendChild(gr);
+        });
+        li.appendChild(gb);
+      }
+      if (window.YQ_TASKS && YQ_TASKS.shipRow) try {
+        YQ_TASKS.shipRow({ key: grp.map(function (m) { return m.s.pro; }).sort()[0], pros: grp.map(function (m) { return m.s.pro; }), total: grp.reduce(function (q, m) { return q + m.total; }, 0),
+          unitOut: (grp.map(function (m) { return m.s.unitOut; }).filter(Boolean)[0]) || '', statuses: grp.map(function (m) { return m.s.status || ''; }),
+          stopped: grp.some(function (m) { return /^(CH\s*\/\s*NOK|HOLD|SELL)$/i.test(m.s.status || ''); }), items: grp,
+          fmt: { time: fmtTime, stor: storLabel } }, li);
+      } catch (e) { console.error(e); }
       ol.appendChild(li);
     });
     if (state.tab === 'ship' && list.length) saveSeen(list.map(function (x) { return x.s.pro; }));
@@ -4574,6 +5371,7 @@ window.YQ_TASKS = (function () {
       var b64 = extractB64(res);
       if (!b64) throw { code: 'empty' };
       var wb = XLSX.read(b64, { type: 'base64' });
+      window.YQ_LAST_WB = wb;
       var groups = normGroups(parseBoard(XLSX, wb));
       await syncDeadlines(groups);
       state.groups = groups; state.source = 'live'; state.at = Date.now(); state.notice = null; state.autoOk = true;
