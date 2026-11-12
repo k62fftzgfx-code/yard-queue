@@ -4220,7 +4220,7 @@ window.YQ_TASKS = (function () {
       var npS = noteParts(s.note); if (npS.other.length) li.appendChild(el('div', 'c-note', '📝 ' + npS.other.join(' · ')));
       if (x.parts.length > 1) li.appendChild(el('div', 'c-ft', yqT('розібрано з: ') + x.parts.map(function (p) { return p.trip + ' (' + p.pallets + ')'; }).join(', ')));
       /* a group leaving together: every load of it, with its own pallets, customer and destination */
-      if (grp.length > 1) {
+      if (false && grp.length > 1) {  /* прибрано: «Їдуть разом» дублює заголовок і розтягує плашку */
         var gb = el('div', 'grpbox'); gb.appendChild(el('div', 'grp-h', yqT('Їдуть разом · ') + grp.length + yqT(' вантажі')));
         grp.forEach(function (m) {
           var gr = el('div', 'grp-r'); gr.appendChild(el('b', 'tg-pro', m.s.pro));
