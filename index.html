@@ -1280,10 +1280,11 @@ button.tl-sep:hover b { text-decoration: underline; text-underline-offset: 3px; 
 /* compact shift block: lower panels, label beside the chips */
 .ov-panel { padding: 8px 12px !important; }
 .ov-ph, .ov-team .tk-teamh { margin-bottom: 4px !important; font-size: 10.5px !important; }
-.ov-gw { width: 118px !important; height: 64px !important; }
-.ov-gauge path { stroke-width: 12; }
-.ov-kpi.has-gauge .ov-pbig { margin-top: -36px !important; }
-.ov-gbody .ov-pbig b { font-size: 28px; } .ov-gbody .ov-pbig span { font-size: 18px; }
+.ov-gw { width: 176px !important; height: 95px !important; }
+.ov-gauge path { stroke-width: 11; }
+.ov-kpi.has-gauge .ov-pbig { margin-top: -54px !important; }
+.ov-gbody .ov-pbig b { font-size: 38px; } .ov-gbody .ov-pbig span { font-size: 24px; } .ov-gbody .ov-ksub { font-size: 13px; }
+.ov-kpi.has-gauge .ov-ph { margin-bottom: 0 !important; }
 .ov-rows { gap: 4px !important; }
 .ov-chrow { display: grid !important; grid-template-columns: 86px minmax(0, 1fr) !important; align-items: center; gap: 6px !important; flex-direction: initial !important; }
 .ov-chrow + .ov-chrow { padding-top: 4px !important; }
@@ -2916,7 +2917,10 @@ window.YQ_TASKS = (function () {
       return o;
     } };
   }
+  /* «Порожні трейлери» line is switched off for now (Oleksandr: not needed yet); the code stays — set to true to bring it back */
+  var SHOW_EMPTIES = false;
   function emptiesBox(box) {
+    if (!SHOW_EMPTIES) return;
     /* one compact line: type a number + Enter; the numbers are kept quietly and picked later in «Призначити» */
     var w = el('div', 'tk-eline');
     w.appendChild(el('b', null, T('Порожні трейлери')));
