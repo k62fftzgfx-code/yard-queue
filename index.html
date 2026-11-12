@@ -4175,6 +4175,15 @@ window.YQ_TASKS = (function () {
     list.forEach(function (x, i) { var r = root(i); if (!groups[r]) { groups[r] = []; order.push(r); } groups[r].push(x); });
     order.forEach(function (r) {
       var grp = groups[r].sort(function (p, q) { return p.s.ready - q.s.ready; }), x = grp[0];
+      /* the rest of the same delivery run (merged cells on the board) that is not in the list by itself yet
+         (no PENDING/LOADING, no deadline): it joins the card — loading, «Loaded» and the pallet count cover the whole run */
+      var inG0 = {}; grp.forEach(function (m) { inG0[m.s.pro] = 1; });
+      grp.slice().forEach(function (m) { partnersOf(m.s).forEach(function (o) {
+        /* only what is already off its inbound trailer (in storage / on the floor); a part still on the road stays a hint */
+        if (inG0[o.pro] || isLoaded(o) || !partnerState(o).done) return; inG0[o.pro] = 1;
+        var ps = (o.parts && o.parts.length ? o.parts.filter(function (q) { return !q.ignore; }) : []);
+        grp.push({ s: o, parts: ps.length ? ps : [{ trip: '', pallets: o.pallets, storage: o.storage }], total: o.total || o.pallets || 0, why: 'run' });
+      }); });
       var s = x.s, diff = s.ready - now, staged = /^(PENDING|LOADING|IN LINE)$/i.test(s.status || '');
       var li = el('li', 'card shipcard' + (diff < 0 ? ' late' : diff < 3 * 3600000 ? ' soon' : '') + (s.basis === 'ready' ? ' has-mbr' : ''));
       var top = el('div', 'c-top');
