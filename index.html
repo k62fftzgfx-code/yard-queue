@@ -1751,9 +1751,10 @@ function parseBoard(XLSX, wb) {
       if (m.e.r - m.s.r < 2 || [1, 3, 6].indexOf(m.s.c) < 0) return;
       for (var rr = m.s.r; rr <= m.e.r; rr++) if (!outGrp[rr]) outGrp[rr] = name + '!' + (m.s.r + 1);
     });
-    /* Status, deadline, loaded-by and driver are merged over the rows of one load: copy the top cell down. */
+    /* Status, deadline, loaded-by and driver are merged over the rows of one load: copy the top cell down.
+       Unit status (K) too: when it is merged over several loads of a trailer, each of their rows gets the one status. */
     (wb.Sheets[name]['!merges'] || []).forEach(function (m) {
-      if (m.e.r <= m.s.r || [1, 2, 3, 4, 5, 6].indexOf(m.s.c) < 0 || !rows[m.s.r]) return;
+      if (m.e.r <= m.s.r || [1, 2, 3, 4, 5, 6, 10].indexOf(m.s.c) < 0 || !rows[m.s.r]) return;
       for (var rr = m.s.r + 1; rr <= m.e.r; rr++) if (rows[rr]) rows[rr][m.s.c] = rows[m.s.r][m.s.c];
     });
     var blocks = [];
@@ -1800,6 +1801,11 @@ function parseBoard(XLSX, wb) {
         if (!g.arrived && str(r[8])) g.arrived = str(r[8]);
         if (!g.eta && str(r[9])) g.eta = str(r[9]);
         if (!g.ustatus && str(r[10])) g.ustatus = str(r[10]);
+        /* every row of the trailer with a Unit status counts: it is empty only when ALL of them say UNLOADED, so a partly
+           unloaded trailer (the rest PENDING) stays; a row with no status at all does not block it */
+        if (str(r[10])) g.kRows = (g.kRows || 0) + 1;
+        if (/^UNLOADED$/i.test(str(r[10]))) g.kUnl = (g.kUnl || 0) + 1;
+        if (/^(OFFLOADING|UNLOADING|IN PROGRESS)$/i.test(str(r[10]))) g.kOff = true;
         var note = [];
         if (banner) { note.push(banner); banner = ''; }
         if (B && !KNOWN.test(B)) note.push(B);
@@ -2386,6 +2392,8 @@ window.YQ_TASKS = (function () {
     '.tk-acts-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}',
     '.tk-as.tk-go{border-style:solid;background:var(--accent);color:var(--accent-fg);font-size:12px;padding:3px 10px 3px 8px;min-height:26px;gap:5px}',
     '.tk-as.tk-go:hover{background:color-mix(in srgb,var(--accent) 85%,#000)}',
+    '.tk-as.tk-part{font-size:12px;padding:3px 9px 3px 7px;min-height:26px;gap:4px;font-variant-numeric:tabular-nums}',
+    '.tk-chk{font-size:11.5px;color:var(--muted);margin:-2px 0 6px}',
     '.tk-as.tk-go .tk-ico svg{width:13px;height:13px}',
     /* «Завершили» while a trailer is being unloaded: a soft ring breathes around it */
     '.tk-as.tk-go.live{animation:tk-breathe 2.4s ease-in-out infinite}',
@@ -2558,17 +2566,19 @@ window.YQ_TASKS = (function () {
     api.draw();
     return api;
   }
-  function confirmDone(task, after) {
+  /* part = true: mark single loads as unloaded while the trailer is still being unloaded (nothing is closed) */
+  function confirmDone(task, after, part) {
     if (cfEl) cfEl.remove();
     cfEl = el('div', 'tk-modal');
     var box = el('div', 'tk-pop tk-cf'); cfEl.appendChild(box);
-    box.appendChild(el('h3', null, T('Завершити ') + task.trip));
-    var sub = el('div', 'tk-sub', T('Завантажую вантажі з борди…')); box.appendChild(sub);
+    box.appendChild(el('h3', null, (part ? T('Розвантажені вантажі · ') : T('Завершити ')) + task.trip));
+    var sub = el('div', 'tk-sub', ''); box.appendChild(sub);
+    var doneL = task.doneLoads || {};
     var list = el('div'), msg = el('div', 'tk-err'); msg.hidden = true;
     box.appendChild(list); box.appendChild(msg);
     var row = el('div', 'tk-row');
     var no = el('button', 'tk-btn', T('Скасувати')); no.type = 'button';
-    var ok = el('button', 'tk-btn pri', T('Підтвердити')); ok.type = 'button'; ok.disabled = true;
+    var ok = el('button', 'tk-btn pri', part ? T('Відмітити') : T('Підтвердити')); ok.type = 'button'; ok.disabled = true;
     row.appendChild(no); row.appendChild(ok); box.appendChild(row);
     var close = function () { if (cfEl) cfEl.remove(); cfEl = null; S.pick = null; };
     no.addEventListener('click', function () { close(); if (after) after(); });
@@ -2605,54 +2615,71 @@ window.YQ_TASKS = (function () {
       if (used.length) { quick.appendChild(el('small', null, T('В роботі:'))); used.forEach(function (u) { chip(u, 'used', T('Вже має вантажі — можна додати ще')); }); }
     };
     box.insertBefore(quick, list);
+    var shipOf = {};
+    if (S.ctx) S.ctx.all.filter(function (t) { return t.trip.toUpperCase() === task.trip; }).concat(S.ctx.all).forEach(function (t) { (t.ships || []).forEach(function (s) { if (s.pro && !shipOf[s.pro]) shipOf[s.pro] = s; }); });
+    var byPro = {};
+    var addRow = function (x) {
+      if (byPro[x.pro]) return byPro[x.pro];
+      /* one compact row, the same as «Куди йдуть вантажі»: ✓ unloaded · PRO · storage ↔ trailer · number */
+      var r = el('div', 'tk-plan-r tk-cfr'), info = el('div', 'tk-plan-i');
+      var already = !!doneL[x.pro], locked = /^LOADED$/i.test(x.k || '') || already;
+      var cuL = el('label', 'tk-tg tk-u'), cU = el('input'); cU.type = 'checkbox'; cU.checked = part ? false : !locked; cU.disabled = locked;
+      if (already) cU.checked = true;
+      cuL.title = T('Розвантажено'); cuL.setAttribute('aria-label', T('Розвантажено')); cuL.appendChild(cU); cuL.appendChild(ico('done'));
+      info.appendChild(cuL);
+      var nm = el('div', 'tk-cfn'); nm.appendChild(el('b', null, x.pro));
+      var s0 = shipOf[x.pro];
+      if (s0) nm.appendChild(el('span', null, s0.pallets ? s0.pallets + T(' пал.') : ''));
+      var lockTag = el('em', 'tk-opt', already ? T('вже відмічено') : 'LOADED'); lockTag.hidden = !locked; nm.appendChild(lockTag);
+      if (s0 && STOP_W.test(s0.status || '')) { nm.appendChild(el('em', 'tk-warnst', s0.status)); r.classList.add('warn'); }
+      info.appendChild(nm);
+      r.appendChild(info);
+      var plan = (already ? { to: doneL[x.pro].to, n: doneL[x.pro].unit || doneL[x.pro].storage } : null) || x.plan || planOf(x.pro, task.trip) || (x.unit ? { to: 'trailer', n: x.unit } : null);
+      var ctl = el('div', 'tk-plan-c'), inp = el('input', 'tk-in'); inp.autocomplete = 'off';
+      var bx = { pro: x.pro, locked: locked, cU: cU, inp: inp };
+      var sync = function () {
+        var on = cU.checked && !bx.locked;
+        sw.disable(!on); inp.disabled = !on;
+        inp.placeholder = sw.get() === 'storage' ? T('№ стореджа') : T('№ трейлера');
+        r.classList.toggle('off', !cU.checked);
+      };
+      var sw = mkSwitch(plan ? plan.to : 'trailer', function () { sync(); redrawQuick(); try { inp.focus(); } catch (e) {} });
+      bx.mode = sw.get; bx.sw = sw; bx.sync = sync; bx.lockTag = lockTag;
+      ctl.appendChild(sw.el); ctl.appendChild(inp); r.appendChild(ctl);
+      inp.value = plan ? plan.n : '';
+      bx.setUnit = function (u) { if (!inp.value.trim() && u) inp.value = u; };
+      bx.lock = function () { bx.locked = true; cU.disabled = true; lockTag.hidden = false; sync(); };
+      inp.addEventListener('focus', function () { lastInp = inp; });
+      inp.addEventListener('input', redrawQuick);
+      cU.addEventListener('change', sync);
+      sync();
+      boxes.push(bx); byPro[x.pro] = bx; list.appendChild(r);
+      return bx;
+    };
+    var hint = function () {
+      sub.textContent = boxes.length ? (part ? T('Поставте ✓ на вантажах, які вже вивантажили. Трейлер лишається в роботі.') : T('Перевірте й підтвердіть. Зніміть ✓ з вантажу, який ще не розвантажили.'))
+        : T('Вантажів у борді не знайдено — завдання просто закриється.');
+    };
+    /* the card already knows the loads: show them at once, then check against the board in the background */
+    var own = S.ctx ? S.ctx.all.filter(function (t) { return t.trip.toUpperCase() === task.trip; })[0] : null;
+    ((own && own.ships) || []).forEach(function (s) { if (s.pro) addRow({ pro: String(s.pro).toUpperCase(), k: '', unit: s.unitOut || '' }); });
+    if (boxes.length) { hint(); redrawQuick(); ok.disabled = false; } else sub.textContent = T('Завантажую вантажі з борди…');
+    var chk = el('div', 'tk-chk', T('звіряю з бордою…')); box.insertBefore(chk, list);
     call('loads', { id: task.id }, true).then(function (r) {
-      var L = r.loads || [];
-      sub.textContent = '';
-      if (L.length) sub.textContent = T('Перевірте й підтвердіть. Зніміть ✓ з вантажу, який ще не розвантажили.');
-      else sub.textContent = T('Вантажів у борді не знайдено — завдання просто закриється.');
-      var shipOf = {};
-      if (S.ctx) S.ctx.all.filter(function (t) { return t.trip.toUpperCase() === task.trip; }).concat(S.ctx.all).forEach(function (t) { (t.ships || []).forEach(function (s) { if (s.pro && !shipOf[s.pro]) shipOf[s.pro] = s; }); });
-      L.forEach(function (x) {
-        /* one compact row, the same as «Куди йдуть вантажі»: ✓ unloaded · PRO · storage ↔ trailer · number */
-        var r = el('div', 'tk-plan-r tk-cfr'), info = el('div', 'tk-plan-i');
-        var locked = /^LOADED$/i.test(x.k);
-        var cuL = el('label', 'tk-tg tk-u'), cU = el('input'); cU.type = 'checkbox'; cU.checked = !locked; cU.disabled = locked;
-        cuL.title = T('Розвантажено'); cuL.setAttribute('aria-label', T('Розвантажено')); cuL.appendChild(cU); cuL.appendChild(ico('done'));
-        info.appendChild(cuL);
-        var nm = el('div', 'tk-cfn'); nm.appendChild(el('b', null, x.pro));
-        var s0 = shipOf[x.pro];
-        if (s0) {
-          var pos = posTxt(s0.note || s0.pos), meta = el('span', null, s0.pallets ? s0.pallets + T(' пал.') : '');
-          nm.appendChild(meta);
-        }
-        if (locked) nm.appendChild(el('em', 'tk-opt', 'LOADED'));
-        if (s0 && STOP_W.test(s0.status || '')) { nm.appendChild(el('em', 'tk-warnst', s0.status)); r.classList.add('warn'); }
-        info.appendChild(nm);
-        r.appendChild(info);
-        var plan = x.plan || planOf(x.pro, task.trip) || (x.unit ? { to: 'trailer', n: x.unit } : null);
-        var ctl = el('div', 'tk-plan-c'), inp = el('input', 'tk-in'); inp.autocomplete = 'off';
-        var sync = function () {
-          var on = cU.checked && !locked;
-          sw.disable(!on); inp.disabled = !on;
-          inp.placeholder = sw.get() === 'storage' ? T('№ стореджа') : T('№ трейлера');
-          r.classList.toggle('off', !cU.checked);
-        };
-        var sw = mkSwitch(plan ? plan.to : 'trailer', function () { sync(); redrawQuick(); try { inp.focus(); } catch (e) {} });
-        ctl.appendChild(sw.el); ctl.appendChild(inp); r.appendChild(ctl);
-        inp.value = plan ? plan.n : '';
-        inp.addEventListener('focus', function () { lastInp = inp; });
-        inp.addEventListener('input', redrawQuick);
-        cU.addEventListener('change', sync);
-        sync();
-        boxes.push({ pro: x.pro, locked: locked, cU: cU, mode: sw.get, sw: sw, inp: inp }); list.appendChild(r);
+      chk.remove();
+      (r.loads || []).forEach(function (x) {
+        var bx = addRow(x);
+        if (/^LOADED$/i.test(x.k || '') && !bx.locked) bx.lock();
+        if (x.plan && !bx.inp.value.trim()) { bx.sw.set(x.plan.to, true); bx.inp.value = x.plan.n; bx.sync(); }
+        bx.setUnit(x.unit);
       });
-      redrawQuick();
-      ok.disabled = false;
-    }, function (e) { sub.textContent = ''; msg.textContent = errText(e); msg.hidden = false; ok.disabled = false; });
+      hint(); redrawQuick(); ok.disabled = false;
+    }, function (e) { chk.remove(); if (!boxes.length) { sub.textContent = ''; msg.textContent = errText(e); msg.hidden = false; } ok.disabled = false; });
     ok.addEventListener('click', function () {
       var keep = [], dest = {}, miss = [];
       boxes.forEach(function (b) {
         if (b.locked) return;
+        if (part && !b.cU.checked) return;
         if (!b.cU.checked) { keep.push(b.pro); return; }
         var v = b.mode(), n = b.inp.value.trim();
         if (!n) { miss.push(b.pro + ': ' + (v === 'storage' ? T('№ стореджа') : T('№ трейлера'))); return; }
@@ -2660,6 +2687,12 @@ window.YQ_TASKS = (function () {
       });
       if (miss.length) { msg.textContent = T('Вкажіть ') + miss.join(', '); msg.hidden = false; return; }
       Object.keys(dest).forEach(function (k) { if (dest[k].to === 'storage') rememberSt(dest[k].storage); });
+      if (part) {
+        if (!Object.keys(dest).length) { msg.textContent = T('Поставте ✓ хоча б на одному вантажі.'); msg.hidden = false; return; }
+        close(); if (after) after();
+        act('loadsDone', { id: task.id, dest: dest, shift: shiftLabel() }).then(function () { if (S.ctx) S.ctx.rerender(); }, function () { if (S.ctx) S.ctx.rerender(); });
+        return;
+      }
       close(); if (after) after();
       act('status', { id: task.id, status: 'done', keep: keep, dest: dest, shift: shiftLabel() }).then(function () { if (S.ctx) S.ctx.rerender(); }, function (e) { if (S.ctx) S.ctx.rerender(); return; ok.textContent = errText(e); msg.hidden = false; });
     });
@@ -3199,6 +3232,15 @@ window.YQ_TASKS = (function () {
         var fz = el('button', 'tk-as tk-go live'); fz.type = 'button';
         fz.appendChild(ico('done')); fz.appendChild(document.createTextNode(T('Завершили'))); fz.title = T('Завершили розвантаження');
         fz.addEventListener('click', function (ev) { ev.stopPropagation(); confirmDone(cur, function () { if (S.ctx) S.ctx.rerender(); }); });
+        /* several loads: mark the ones already out while the unloading goes on */
+        var nL = (t.ships || []).length, nD = Object.keys(cur.doneLoads || {}).length;
+        if (nL > 1) {
+          var pz = el('button', 'tk-as tk-part'); pz.type = 'button';
+          pz.appendChild(ico('done')); pz.appendChild(document.createTextNode(nD + '/' + nL));
+          pz.title = T('Відмітити вантажі, які вже розвантажили (трейлер лишається в роботі)'); pz.setAttribute('aria-label', pz.title);
+          pz.addEventListener('click', function (ev) { ev.stopPropagation(); confirmDone(cur, function () { if (S.ctx) S.ctx.rerender(); }, true); });
+          bar.appendChild(pz);
+        }
         bar.appendChild(fz);
       } else if (cur && cur.status === 'assigned' && cur.workers.length) {
         /* «Почали» writes YARD itself, so it shows for a planned trailer too */
@@ -3622,9 +3664,10 @@ window.YQ_TASKS = (function () {
       else if (!t.eta && g.eta) t.eta = g.eta;
       /* A trailer arrives once: when it is listed in two weekly sheets, the earliest window is the real one. */
       if (g.etaEnd && (!t.etaEnd || (g.etaStart || g.etaEnd) < (t.etaStart || t.etaEnd))) { t.etaEnd = g.etaEnd; t.etaStart = g.etaStart || g.etaEnd; }
-      if (/^(OFFLOADING|UNLOADING|IN PROGRESS)$/i.test(g.ustatus)) t.working = true;
-      /* one trailer, several rows: it is empty only when every one of its rows says UNLOADED */
-      t.nRows = (t.nRows || 0) + 1; if (/^UNLOADED$/i.test(g.ustatus)) t.nUnl = (t.nUnl || 0) + 1;
+      if (g.kOff || /^(OFFLOADING|UNLOADING|IN PROGRESS)$/i.test(g.ustatus)) t.working = true;
+      /* one trailer, several rows: it is empty only when every one of its rows says UNLOADED (counted row by row) */
+      if (g.kRows) { t.nRows = (t.nRows || 0) + g.kRows; t.nUnl = (t.nUnl || 0) + (g.kUnl || 0); }
+      else { t.nRows = (t.nRows || 0) + 1; if (/^UNLOADED$/i.test(g.ustatus)) t.nUnl = (t.nUnl || 0) + 1; }
       if (g.hot) { t.hot = true; if (!t.hotReason) t.hotReason = g.hotReason; }
       g.notes.forEach(function (n) { if (t.notes.indexOf(n) < 0) t.notes.push(n); });
       if (t.days.indexOf(g.day) < 0) t.days.push(g.day);
