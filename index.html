@@ -1579,6 +1579,8 @@ function parseBoard(XLSX, wb) {
           if (k) { var n = parseInt(k[1], 10); h = Math.floor(n / 100); m = n % 100; }
         }
       }
+      /* «THU ASAP»: a day without a time means "as soon as possible", not noon — no clock time; the HOT flag puts it on top */
+      if (h === null && /\b(ASAP|NOW|URGENT|RUSH)\b/.test(s)) return null;
       if (h === null && dayTok) { h = 12; }
       if (h === null) return null;
     }
@@ -3594,6 +3596,12 @@ window.YQ_TASKS = (function () {
     });
   }
   /* Loaded = status LOADED / CH-OK / CH-NOK. "Loaded by" alone is not proof: it is often filled when the shift is assigned, before loading. */
+  /* Must be ready «THU ASAP» (no clock time): shown as «Чт ASAP» */
+  function asapTxt(s) {
+    if (!s || s.deadline || !s.deadlineRaw || !/\b(ASAP|NOW|URGENT|RUSH)\b/i.test(s.deadlineRaw)) return '';
+    var m = String(s.deadlineRaw).match(/\b(SUN|MON|TUE|WED|THU|FRI|SAT)/i);
+    return (m ? WD[['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].indexOf(m[1].toUpperCase())] + ' ' : '') + 'ASAP';
+  }
   function isLoaded(s) { return /^(LOADED|CH\/OK)$/i.test(s.status || ''); }  /* CH/NOK is a warning: the load still shows in «До відвантаження» */
   function stateOf(o) { return o.unloaded ? yqT('розвантажено') : o.working ? yqT('розвантажується') : o.yard ? yqT('на ярді') : /^PN$/i.test(o.eta || '') ? 'PN' : o.eta ? yqT('їде, ') + fmtEta(o) : yqT('ETA не вказано'); }
   function hm(ts) { var d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
@@ -3870,6 +3878,7 @@ window.YQ_TASKS = (function () {
     var row = function (k, v, cls) { if (v === null || v === undefined || v === '') return; var w = el('div', 'kvr' + (cls ? ' ' + cls : '')); w.appendChild(el('span', null, k)); w.appendChild(el('b', null, String(v))); kv.appendChild(w); };
     row(yqT('Куди'), s.to ? s.to + (s.miles !== null && s.miles !== undefined ? ' · ' + s.miles + ' mi' : '') : '');
     if (s.deadline) row('⚑ Must be ready', fmtTime(s.ready), 'big mbr');
+    else if (asapTxt(s)) { row('⚑ Must be ready', asapTxt(s), 'big mbr'); if (s.ready !== null) row(yqT('Виїхати до'), fmtTime(s.ready)); }
     else row(s.deadlineRaw ? 'Must be ready' : yqT('Виїхати до'), s.ready !== null ? fmtTime(s.ready) : '—', 'big');
     if (s.deadlineRaw && s.departBy !== null && s.departBy !== undefined && Math.abs(s.departBy - s.ready) > 60000) row(yqT('Виїхати до'), fmtTime(s.departBy));
     row(yqT('Доставка'), s.deliver ? (s.deliverApprox ? '~' : '') + fmtTime(s.deliver) : '');
@@ -4203,7 +4212,7 @@ window.YQ_TASKS = (function () {
       var row = function (k, v, cls) { if (v === null || v === undefined || v === '') return; var w = el('div', 'kvr' + (cls ? ' ' + cls : '')); w.appendChild(el('span', null, k)); w.appendChild(el('b', null, String(v))); kv.appendChild(w); };
       row(yqT('Куди'), s.to ? s.to + (s.miles !== null && s.miles !== undefined ? ' · ' + s.miles + ' mi' : '') : '');
       if (s.basis === 'ready') row('⚑ Must be ready', fmtTime(s.ready), 'big mbr');
-      else row(yqT('Виїхати до'), fmtTime(s.ready), 'big' + (diff < 0 ? ' lateval' : diff < 3 * 3600000 ? ' soonval' : ''));
+      else { if (asapTxt(s)) row('⚑ Must be ready', asapTxt(s), 'big mbr'); row(yqT('Виїхати до'), fmtTime(s.ready), 'big' + (diff < 0 ? ' lateval' : diff < 3 * 3600000 ? ' soonval' : '')); }
       var when = el('div', 'sc-when' + (diff < 0 ? ' late' : ''), (diff < 0 ? yqT('запізнення ') + rel(diff) : yqT('через ') + rel(diff)) + ' · ' + (s.basis === 'ready' ? yqT('за Must be ready') : yqT('за доставкою')));
       kv.appendChild(when);
       row(yqT('Доставка'), s.deliver ? (s.deliverApprox ? '~' : '') + fmtTime(s.deliver) : '');
