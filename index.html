@@ -1064,6 +1064,11 @@ button.tl-sep:hover b { text-decoration: underline; text-underline-offset: 3px; 
 .tile small { display: block; }
 .tile small.tsub2 { opacity: .8; }
 .ttag.unit { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.cpy { cursor: copy; position: relative; border-radius: 4px; }
+.cpy:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
+.cpy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cpy-ok { color: var(--accent); }
+.cpy-tip { position: absolute; left: 50%; bottom: calc(100% + 4px); transform: translateX(-50%); white-space: nowrap; font: 600 11px/1.2 inherit; font-family: inherit; padding: 3px 7px; border-radius: 5px; background: var(--fg); color: var(--surface); pointer-events: none; z-index: 30; text-decoration: none; }
 .ttag.st, .ttag.bst { background: var(--hot-bg); color: var(--hot); }
 .pop-st { color: var(--hot); font-weight: 600; }
 
@@ -3917,6 +3922,25 @@ window.YQ_TASKS = (function () {
   window.addEventListener('scroll', hideRankTip, { passive: true });
   document.addEventListener('click', function (ev) { if (rankTipFor && ev.target !== rankTipFor) hideRankTip(); });
 
+  /* click a number on the card (trip, trailer, truck) to copy it; the rest of the header still opens the loads */
+  function copyNum(v) {
+    try { if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(v).catch(function () { return copyOld(v); }); } catch (e) {}
+    return Promise.resolve(copyOld(v));
+  }
+  function copyOld(v) { var ta = document.createElement('textarea'); ta.value = v; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:-1000px;opacity:0'; document.body.appendChild(ta); ta.select(); var ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); return ok; }
+  function copyable(node, v) {
+    node.classList.add('cpy'); node.title = yqT('Натисніть, щоб скопіювати') + ': ' + v; node.setAttribute('role', 'button'); node.tabIndex = 0;
+    var go = function (ev) {
+      ev.stopPropagation(); ev.preventDefault();
+      copyNum(v).then(function () {
+        node.classList.add('cpy-ok'); var b = el('span', 'cpy-tip', yqT('Скопійовано ✓')); node.appendChild(b);
+        setTimeout(function () { node.classList.remove('cpy-ok'); b.remove(); }, 1100);
+      });
+    };
+    node.addEventListener('click', go);
+    node.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') go(ev); });
+    return node;
+  }
   function rowFor(t, rank, now, arr) {
     var li = el('li', 'row ' + termCls(t) + (t.hot ? ' is-hot' : '') + (t.allLoaded ? ' is-done' : ''));
     li.id = 'tr-' + t.trip.toUpperCase();
@@ -3934,11 +3958,11 @@ window.YQ_TASKS = (function () {
       qn.addEventListener('click', function (ev) { ev.stopPropagation(); if (rankTipFor === qn) hideRankTip(); else showWhy(); });
       head.appendChild(qn);
     }
-    head.appendChild(el('span', 'trailer tname', t.trip));
+    head.appendChild(copyable(el('span', 'trailer tname', t.trip), t.trip));
     var tk = truckOf(t);
-    var fact = function (k, v) { var c = el('span', 'hchip'); if (k) c.appendChild(el('i', null, k)); c.appendChild(document.createTextNode(v)); head.appendChild(c); };
-    if (tk.unit) fact(yqT('Трейлер'), tk.unit);
-    if (tk.truck) fact(yqT('Трак'), tk.truck);
+    var fact = function (k, v) { var c = el('span', 'hchip'); if (k) c.appendChild(el('i', null, k)); c.appendChild(document.createTextNode(v)); head.appendChild(c); return c; };
+    if (tk.unit) copyable(fact(yqT('Трейлер'), tk.unit), String(tk.unit));
+    if (tk.truck) copyable(fact(yqT('Трак'), tk.truck), String(tk.truck));
     fact('', t.ships.length + ' ' + (t.ships.length === 1 ? yqT('вантаж') : yqT('вантажі')) + ' · ' + t.pallets + yqT(' пал.') + (t.loadedN && !t.allLoaded ? yqT(' (завантажено ') + t.loadedN + ')' : ''));
     fact(yqT('План відвант.'), t.days.slice().sort().map(fmtDay).join(', '));
     head.lastChild.title = yqT('Блоки днів на борді, в яких стоять вантажі цього трейлера: на який день диспетчер запланував їх відвантаження. Це не дата, коли трейлер завантажили.');
