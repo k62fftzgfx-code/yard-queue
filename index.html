@@ -2127,6 +2127,9 @@ window.YQ_TASKS = (function () {
   if (!API || API.indexOf('__') === 0) return null;
   var S = { empties: [], me: null, workers: [], tasks: [], err: '', state: 'idle', ctx: null, pick: null, busy: false, sig: '', off: false };
   var POLL_MS = 20000, WORKER = !!window.YQ_WORKER;
+  /* the worker's own page is switched off for now: workers get their tasks in Telegram (the code stays — set to false to bring it back) */
+  var WORKER_OFF = true, BOT = 'yardtasks_mkm_bot';
+  function botNote() { var d = el('div', 'tk-meta'); d.appendChild(document.createTextNode(T('Завдання тепер приходять у Telegram: '))); var a = el('a', null, '@' + BOT); a.href = 'https://t.me/' + BOT; a.target = '_blank'; a.rel = 'noopener'; d.appendChild(a); return d; }
   var T = function (s) { return typeof yqT === 'function' ? yqT(s) : s; };
   function sh() { return window.YQ_TZ_SHIFT || 0; }
   function loc() { return window.YQ_LOC ? YQ_LOC.id : 'MKM'; }
@@ -2419,6 +2422,12 @@ window.YQ_TASKS = (function () {
     '.tk-acts-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}',
     '.tk-as.tk-go{border-style:solid;background:var(--accent);color:var(--accent-fg);font-size:12px;padding:3px 10px 3px 8px;min-height:26px;gap:5px}',
     '.tk-as.tk-go:hover{background:color-mix(in srgb,var(--accent) 85%,#000)}',
+    '.tk-noplan{margin-left:auto;font-style:normal;font-size:12px;font-weight:600;color:var(--warn);background:var(--warn-bg);border-radius:999px;padding:2px 9px}',
+    '.tk-chip.tk-noplan-chip{background:var(--warn-bg);color:var(--warn);font-weight:600}',
+    '.tk-flag{flex:none;width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:15px;line-height:1;cursor:pointer;opacity:.55}',
+    '.tk-flag.on{opacity:1;color:var(--hot);background:var(--hot-bg);border-color:color-mix(in srgb,var(--hot) 45%,transparent)}',
+    '.tk-flag:disabled{visibility:hidden}',
+    '.tk-plan-r.prio .tk-plan-i b{color:var(--hot)}',
     '.tk-as.tk-part{font-size:12px;padding:3px 9px 3px 7px;min-height:26px;gap:4px;font-variant-numeric:tabular-nums}',
     '.tk-chk{font-size:11.5px;color:var(--muted);margin:-2px 0 6px}',
     '.tk-as.tk-go .tk-ico svg{width:13px;height:13px}',
@@ -2808,7 +2817,7 @@ window.YQ_TASKS = (function () {
       /* the window closes at once; the card shows «Зберігаю…» and then «✓ Записано» (or the error) */
       closePick(); if (S.ctx) S.ctx.rerender();
       (tr.ship ? act('shipAssign', { pros: tr.pros, workers: chosen, pallets: tr.pallets || 0, unit: plan ? plan.unit() : tr.unitOut || '', force: !!force }) : act('assign', { trip: tr.trip, workers: chosen, unit: tk.unit || '', pallets: tr.pallets || 0, loads: (tr.ships || []).length, force: !!force,
-        planning: planCb ? planCb.checked : false, yard: !!(yardCb && yardCb.checked && planCb && planCb.checked), plan: pvNow }))
+        planning: planCb ? planCb.checked : false, yard: !!(yardCb && yardCb.checked && planCb && planCb.checked), plan: pvNow, prio: plan && plan.prio ? plan.prio() : undefined }))
         .then(function () { if (plan) { var pv = pvNow; S.planLocal = S.planLocal || {}; Object.keys(pv).forEach(function (k) { S.planLocal[k] = { to: pv[k].to, n: pv[k].n, trip: String(tr.trip).toUpperCase(), at: Date.now() }; if (pv[k].to === 'storage') rememberSt(pv[k].n); }); } closePick(); if (S.ctx) S.ctx.rerender(); })
         .catch(function () { /* shown on the card and in the note at the bottom */ });
     };
@@ -2953,12 +2962,36 @@ window.YQ_TASKS = (function () {
     if (tr.loading) w.appendChild(el('div', 'tk-plan-n', T('Зараз LOADING — натисніть «✓ Завантажено», коли закінчите.')));
     return { el: w, value: function () { return {}; }, unit: function () { return inp.value.trim(); }, focus: function () { inp.focus(); } };
   }
+  /* ⚑ priority from the board: the dispatcher's Must be ready, or ASAP / HOT in it or in the load's notes */
+  var WDU = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+  function autoPrio(s) {
+    if (!s || s.loaded) return null;
+    if (s.deadline && s.basis === 'ready') { var d = new Date(s.deadline); return { at: s.deadline, raw: T(WDU[d.getDay()]) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) }; }
+    if (/\b(ASAP|NOW|URGENT|RUSH|HOT)\b/i.test(String(s.deadlineRaw || '') + ' ' + String(s.note || ''))) return { at: 0, raw: /\bHOT\b/i.test(String(s.deadlineRaw || '') + ' ' + String(s.note || '')) ? 'HOT' : 'ASAP' };
+    return null;
+  }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  /* loads of a planned / started trailer that nobody said where they go (no plan, no C, no own E) */
+  function noPlanLoads(t, cur) {
+    var pl = (cur && cur.plan) || {}, dl = (cur && cur.doneLoads) || {}, out = [];
+    (t.ships || []).forEach(function (s) {
+      if (!s.pro || s.loaded || STOPPED.test(s.status || '') || dl[s.pro] || out.indexOf(s.pro) >= 0) return;
+      if (pl[s.pro] && pl[s.pro].n) return;
+      if (planOf(s.pro, String(t.trip).toUpperCase())) return;
+      if (s.unitOut) return;
+      if (storOf(s, t.trip).mine) return;
+      out.push(s.pro);
+    });
+    return out;
+  }
   function planBlock(tr) {
     var seen = {}, L = (tr.ships || []).filter(function (s) { if (!s.pro || seen[s.pro]) return false; seen[s.pro] = 1; return true; });
     if (!L.length) return null;
     var cur = activeFor(tr.trip), had = (cur && cur.plan) || {};
-    var w = el('div', 'tk-plan'), rows = [], last = null, boardSt = [];
-    var hd = el('div', 'tk-plan-h'); hd.appendChild(el('b', null, T('Куди йдуть вантажі'))); hd.appendChild(el('small', null, T('трейлер → C, сторедж → E'))); w.appendChild(hd);
+    var w = el('div', 'tk-plan'), rows = [], last = null, boardSt = [], hadPr = (cur && cur.prio) || {};
+    var hd = el('div', 'tk-plan-h'); hd.appendChild(el('b', null, T('Куди йдуть вантажі'))); hd.appendChild(el('small', null, T('трейлер → C, сторедж → E')));
+    var npw = el('em', 'tk-noplan'); npw.hidden = true; hd.appendChild(npw); w.appendChild(hd);
+    var countNo = function () { var n = rows.filter(function (x) { return !x.inp.disabled && !x.inp.value.trim(); }).length; npw.hidden = !n; npw.textContent = '⚠ ' + n + T(' без плану'); };
     var chips = el('div', 'tk-plan-e');
     var drawChips = function () {
       chips.textContent = '';
@@ -2985,6 +3018,7 @@ window.YQ_TASKS = (function () {
       if (U.length) { chips.appendChild(el('small', null, T('В роботі:'))); U.forEach(function (u) { chip(u, 'trailer', true); }); }
       if (st.length) { chips.appendChild(el('small', null, T('Сторедж:'))); st.forEach(function (u) { chip(u, 'storage'); }); }
       if (!E.length && !U.length && !st.length) chips.appendChild(el('small', null, T('Впишіть номер вручну — збережені порожні трейлери з’являться тут.')));
+      countNo();
     };
     w.appendChild(chips);
     L.forEach(function (s) {
@@ -3009,8 +3043,15 @@ window.YQ_TASKS = (function () {
       inp.placeholder = p0.to === 'storage' ? T('№ стореджа') : T('№ трейлера');
       sw.disable(stopped);
       var ctl = el('div', 'tk-plan-c'); ctl.appendChild(sw.el); ctl.appendChild(inp);
+      /* ⚑ «first»: on by itself for the board's Must be ready / ASAP / HOT; the supervisor can add or take it off */
+      var ap = autoPrio(s), hp = hadPr[s.pro], fl = el('button', 'tk-flag'); fl.type = 'button';
+      var fOn = hp ? !hp.off : !!ap;
+      var fSync = function () { fl.classList.toggle('on', fOn); fl.textContent = '⚑'; fl.title = fOn ? T('Першим') + (ap && ap.raw ? ' · ' + ap.raw : '') + T(' — натисніть, щоб зняти') : T('Позначити: робити першим'); fl.setAttribute('aria-pressed', fOn ? 'true' : 'false'); r.classList.toggle('prio', fOn); };
+      fl.addEventListener('click', function () { fOn = !fOn; fSync(); });
+      if (stopped) fl.disabled = true;
+      fSync(); ctl.insertBefore(fl, ctl.firstChild);
       r.appendChild(ctl); w.appendChild(r);
-      rec = { pro: s.pro, was: other ? { to: '', n: '' } : p0, inp: inp, sw: sw };
+      rec = { pro: s.pro, was: other ? { to: '', n: '' } : p0, inp: inp, sw: sw, prio: function () { return stopped ? null : fOn ? (ap ? { at: ap.at, raw: ap.raw, man: false } : { at: 0, raw: '', man: true }) : (ap ? { off: true } : null); } };
       inp.addEventListener('focus', function () { last = rec; });
       inp.addEventListener('input', drawChips);
       rows.push(rec);
@@ -3020,7 +3061,7 @@ window.YQ_TASKS = (function () {
       var o = {};
       rows.forEach(function (x) { var v = x.inp.value.trim(), to = x.sw.get(); if (!x.inp.disabled && v && (v !== x.was.n || to !== x.was.to)) o[x.pro] = { to: to, n: v }; });
       return o;
-    } };
+    }, prio: function () { var o = {}; rows.forEach(function (x) { var v = x.prio(); if (v) o[x.pro] = v; }); return o; } };
   }
   /* «Порожні трейлери» line is switched off for now (Oleksandr: not needed yet); the code stays — set to true to bring it back */
   var SHOW_EMPTIES = false;
@@ -3263,6 +3304,8 @@ window.YQ_TASKS = (function () {
       var c = el('span', 'tk-chip ' + (nobody ? 'plan' : light(cur)) + (mine ? ' mine' : ''), nobody ? T('План без людей · ') + hm(cur.assignedAt) : (mine && cur.workers.length === 1 ? T('Ви') : cur.workers.map(function (e) { return e === S.me.email ? T('Ви') : first(nameOf(e)); }).join(', ')) + ' · ' + (cur.status === 'assigned' && !t.yard && !t.working ? T('заплановано') : stTxt(cur)));
       c.insertBefore(ico(nobody ? 'box' : cur.workers.length > 1 ? 'team' : 'person'), c.firstChild);
       head.appendChild(c);
+      var np = S.me.canManage ? noPlanLoads(t, cur) : [];
+      if (np.length) { var w0 = el('span', 'tk-chip tk-noplan-chip', '⚠ ' + T('Без плану: ') + np.join(', ')); w0.title = T('Вкажіть у «Куди йдуть вантажі», куди ці вантажі — інакше працівник не зможе їх відмітити'); head.appendChild(w0); }
     }
     var fin = !cur && !t.unloaded ? doneFor(t.trip) : null;
     if (fin && (S.me.canManage || fin.workers.indexOf(S.me.email) >= 0)) {
@@ -3340,7 +3383,10 @@ window.YQ_TASKS = (function () {
     /* my task (everyone who is in the list can have one) */
     var my = activeOfWorker(S.me.email);
     var myDone = S.tasks.filter(function (t) { return t.status === 'done' && t.workers.indexOf(S.me.email) >= 0 && inShift(t.doneAt); });
-    if (S.me.role === 'worker' || my) {
+    if (WORKER_OFF && S.me.role === 'worker') {
+      var hd0 = el('div', 'tk-hd'); hd0.appendChild(el('h2', null, T('Моє завдання'))); box.appendChild(hd0);
+      var m0 = el('div', 'tk-my'); m0.appendChild(botNote()); box.appendChild(m0);
+    } else if (S.me.role === 'worker' || my) {
       var hd = el('div', 'tk-hd'); hd.appendChild(el('h2', null, T('Моє завдання')));
       hd.appendChild(el('small', null, S.me.name + (myDone.length ? ' · ' + T('за зміну розвантажено: ') + myDone.length : '')));
       box.appendChild(hd);
@@ -3441,6 +3487,11 @@ window.YQ_TASKS = (function () {
 
   /* ---------- worker screen (link with ?worker): no board, only the queue the supervisor's page publishes ---------- */
   function bootWorker() {
+    if (WORKER_OFF) {
+      Array.prototype.forEach.call(document.body.children, function (c) { if (c.tagName !== 'SCRIPT' && c.tagName !== 'STYLE') c.style.display = 'none'; });
+      var nb = el('main'); nb.style.cssText = 'max-width:520px;margin:60px auto;padding:24px;text-align:center;font:16px/1.5 var(--font-body,system-ui);color:var(--fg)';
+      nb.appendChild(el('div', null, '🚛')); nb.firstChild.style.fontSize = '40px'; nb.appendChild(botNote()); document.body.appendChild(nb); return;
+    }
     document.title = 'Yard Queue · ' + T('Працівник');
     var root = el('main', 'wk-root');
     Array.prototype.forEach.call(document.body.children, function (c) { if (c.tagName !== 'SCRIPT' && c.tagName !== 'STYLE' && !/\bdemo-/.test(c.className)) c.style.display = 'none'; });
