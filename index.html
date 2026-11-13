@@ -1064,7 +1064,7 @@ button.tl-sep:hover b { text-decoration: underline; text-underline-offset: 3px; 
 .tile small { display: block; }
 .tile small.tsub2 { opacity: .8; }
 .ttag.unit { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
-.ttag.st { background: var(--hot-bg); color: var(--hot); }
+.ttag.st, .ttag.bst { background: var(--hot-bg); color: var(--hot); }
 .pop-st { color: var(--hot); font-weight: 600; }
 
 /* overview panel */
@@ -2644,15 +2644,15 @@ window.YQ_TASKS = (function () {
       if (byPro[x.pro]) return byPro[x.pro];
       /* one compact row, the same as «Куди йдуть вантажі»: ✓ unloaded · PRO · storage ↔ trailer · number */
       var r = el('div', 'tk-plan-r tk-cfr'), info = el('div', 'tk-plan-i');
-      var already = !!doneL[x.pro], locked = /^LOADED$/i.test(x.k || '') || already;
+      var already = !!doneL[x.pro], s0 = shipOf[x.pro], chOk = /^CH\s*\/\s*OK$/i.test(x.k || '') || !!(s0 && /^CH\/OK$/i.test(s0.status || ''));
+      var locked = /^LOADED$/i.test(x.k || '') || already || chOk;
       var cuL = el('label', 'tk-tg tk-u'), cU = el('input'); cU.type = 'checkbox'; cU.checked = part ? false : !locked; cU.disabled = locked;
       if (already) cU.checked = true;
       cuL.title = T('Розвантажено'); cuL.setAttribute('aria-label', T('Розвантажено')); cuL.appendChild(cU); cuL.appendChild(ico('done'));
       info.appendChild(cuL);
       var nm = el('div', 'tk-cfn'); nm.appendChild(el('b', null, x.pro));
-      var s0 = shipOf[x.pro];
       if (s0) nm.appendChild(el('span', null, s0.pallets ? s0.pallets + T(' пал.') : ''));
-      var lockTag = el('em', 'tk-opt', already ? T('вже відмічено') : 'LOADED'); lockTag.hidden = !locked; nm.appendChild(lockTag);
+      var lockTag = el('em', 'tk-opt', already ? T('вже відмічено') : chOk ? 'CH / OK' : 'LOADED'); lockTag.hidden = !locked; nm.appendChild(lockTag);
       if (s0 && STOP_W.test(s0.status || '')) { nm.appendChild(el('em', 'tk-warnst', s0.status)); r.classList.add('warn'); }
       info.appendChild(nm);
       r.appendChild(info);
@@ -2699,7 +2699,7 @@ window.YQ_TASKS = (function () {
       chk.remove();
       (r.loads || []).forEach(function (x) {
         var bx = addRow(x);
-        if (/^LOADED$/i.test(x.k || '') && !bx.locked) bx.lock();
+        if (/^(LOADED|CH\s*\/\s*OK)$/i.test(x.k || '') && !bx.locked) bx.lock();
         if (x.plan && !bx.inp.value.trim()) { bx.sw.set(x.plan.to, true); bx.inp.value = x.plan.n; bx.sync(); }
         bx.setUnit(x.unit);
       });
@@ -2768,7 +2768,8 @@ window.YQ_TASKS = (function () {
     /* «Планування»: only a plan (K PENDING, no load statuses). Without it the trailer is unloaded now: YARD, OFFLOADING, LOADING / PENDING */
     var here = !!(tr.yard || tr.working), opts = el('div', 'tk-opts'), planCb = null, yardCb = null, yl = null;
     if (!tr.ship && (!cur || cur.status === 'assigned')) {
-      var pl = el('label', 'tk-o'); planCb = el('input'); planCb.type = 'checkbox'; planCb.checked = !here;
+      /* always three steps — plan, «Почали», «Завершили» — whether the trailer is on the yard or not (Oleksandr) */
+      var pl = el('label', 'tk-o'); planCb = el('input'); planCb.type = 'checkbox'; planCb.checked = true;
       pl.appendChild(planCb); pl.appendChild(el('span', null, T('План'))); var pls = el('small'); pl.appendChild(pls);
       opts.appendChild(pl);
       /* the trailer stands on the yard but the board has no YARD (a dispatcher forgot): mark it, the unloading waits */
@@ -3680,10 +3681,11 @@ window.YQ_TASKS = (function () {
   function chText(c) {
     if (c.kind === 'unit') return c.trip + yqT(': трейлер ') + c.fr + ' → ' + c.tr;
     if (c.kind === 'st') return c.trip + yqT(': UNLOADED прибрали з борди (тепер ') + c.tr + ')';
+    if (c.kind === 'bst') return c.pro + yqT(': статус ') + (c.fr || yqT('порожньо')) + ' → ' + c.tr + yqT(' — перевір, що з вантажем');
     return c.kind === 'note' ? c.pro + yqT(': примітка «') + c.nt + '»' : c.pro + ' ' + dlLabel(c.ft, c.fr) + ' → ' + dlLabel(c.tt, c.tr);
   }
-  function chDetail(c) { return c.kind === 'unit' ? yqT('трейлер ') + c.fr + ' → ' + c.tr : c.kind === 'st' ? yqT('UNLOADED прибрали, тепер ') + c.tr : ''; }
-  function chTag(kd) { return kd === 'dl' ? yqT('⚑ дедлайн') : kd === 'instr' ? yqT('🔒 інструкція') : kd === 'unit' ? yqT('🚛 трейлер') : kd === 'st' ? yqT('↩ статус') : yqT('📝 примітка'); }
+  function chDetail(c) { return c.kind === 'unit' ? yqT('трейлер ') + c.fr + ' → ' + c.tr : c.kind === 'st' ? yqT('UNLOADED прибрали, тепер ') + c.tr : c.kind === 'bst' ? yqT('статус ') + (c.fr || yqT('порожньо')) + ' → ' + c.tr : ''; }
+  function chTag(kd) { return kd === 'dl' ? yqT('⚑ дедлайн') : kd === 'instr' ? yqT('🔒 інструкція') : kd === 'unit' ? yqT('🚛 трейлер') : kd === 'st' ? yqT('↩ статус') : kd === 'bst' ? yqT('⛔ проблема') : yqT('📝 примітка'); }
   function dlLabel(ts, raw) { return ts ? fmtTime(ts) : (raw ? raw : yqT('не вказано')); }
   function normRaw(v) { return String(v || '').replace(/\s+/g, ' ').trim().toUpperCase(); }
   function recentChanges(maxAgeMs) { var now = Date.now(); return state.changes.filter(function (c) { return now - c.at < maxAgeMs; }); }
@@ -3796,6 +3798,9 @@ window.YQ_TASKS = (function () {
     var m = String(s.deadlineRaw).match(/\b(SUN|MON|TUE|WED|THU|FRI|SAT)/i);
     return (m ? WD[['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].indexOf(m[1].toUpperCase())] + ' ' : '') + 'ASAP';
   }
+  /* SELL: dispatch sold the load to a carrier — it comes and we reload onto it; no time on the board, so it goes first */
+  function isSell(s) { return /^SELL$/i.test(s.status || ''); }
+  function readyKey(s) { return s.ready === null ? 0 : s.ready; }
   function isLoaded(s) { return /^(LOADED|CH\/OK)$/i.test(s.status || ''); }  /* CH/NOK is a warning: the load still shows in «До відвантаження» */
   function stateOf(o) { return o.unloaded ? yqT('розвантажено') : o.working ? yqT('розвантажується') : o.yard ? yqT('на ярді') : /^PN$/i.test(o.eta || '') ? 'PN' : o.eta ? yqT('їде, ') + fmtEta(o) : yqT('ETA не вказано'); }
   function hm(ts) { var d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
@@ -3858,6 +3863,7 @@ window.YQ_TASKS = (function () {
     var seenCh = {};
     recentChanges(12 * 3600000).filter(function (c) { var k = c.pro + '|' + (c.kind || 'dl'); if (String(c.trip).toUpperCase() !== t.trip.toUpperCase() || seenCh[k]) return false; seenCh[k] = 1; return true; }).forEach(function (c) {
       if (c.kind === 'unit') { out.push({ lvl: 'amber', text: yqT('Змінили номер трейлера: ') + chDetail(c) + ' (' + fmtTime(c.at) + ')' }); return; }
+      if (c.kind === 'bst') return; /* shown below for as long as the status stays */
       if (c.kind === 'st') { if (!t.unloaded) out.push({ lvl: 'red', text: yqT('На борді прибрали UNLOADED (') + fmtTime(c.at) + yqT('), хоча трейлер уже розвантажували') }); return; }
       out.push({ lvl: c.kind === 'note' ? 'amber' : c.ft && c.tt && c.tt < c.ft ? 'red' : 'amber', text: (c.kind === 'note' ? yqT('Нова примітка: ') : yqT('Дедлайн змінено: ')) + chText(c) });
     });
@@ -3865,6 +3871,7 @@ window.YQ_TASKS = (function () {
     if (!t.yard && sb !== null && t.etaEnd && t.etaEnd > sb && samFresh && sam.eta <= sb) out.push({ lvl: 'amber', text: yqT('За бордою трейлер приїде пізно (до ') + hm(t.etaEnd) + yqT('), але Samsara показує ') + fmtTime(sam.eta) + yqT(': встигаємо, якщо трак не зупиниться надовго') });
     else if (!t.yard && sb !== null && t.etaEnd && t.etaEnd > sb && !samFresh) out.push({ lvl: 'red', text: yqT('За бордою трейлер приїде пізно: ETA до ') + fmtEta(t) + yqT(', а почати треба до ') + fmtTime(sb) });
     t.ships.forEach(function (s) {
+      if (/^(CH\/NOK|SELL)$/i.test(s.status || '')) out.push({ lvl: 'red', text: s.pro + ': ' + s.status.replace('/', ' / ') + yqT(' — проблема з вантажем, перевір борду') });
       if (s.loaded) return;
       if (s.missing) out.push({ lvl: 'amber', text: s.pro + yqT(': на борді ') + s.found + yqT(' з ') + s.total + yqT(' пал., не вистачає ') + s.missing });
       if (s.excess) out.push({ lvl: 'amber', text: s.pro + yqT(': на борді ') + s.found + yqT(' пал. при Total ') + s.total + yqT(', забагато на ') + s.excess });
@@ -4138,7 +4145,7 @@ window.YQ_TASKS = (function () {
     all.forEach(function (t) { byTrip[t.trip.toUpperCase()] = t; });
     all.forEach(function (t) {
       t.ships.forEach(function (s) {
-        if (seen[s.pro] || isLoaded(s) || s.ready === null || s.ready < now - 72 * 3600000) return; /* overdue up to 3 days still shows, in red */
+        if (seen[s.pro] || isLoaded(s) || (s.ready === null && !isSell(s)) || (s.ready !== null && s.ready < now - 72 * 3600000)) return; /* SELL: a carrier comes for it, no time needed */ /* overdue up to 3 days still shows, in red */
         var parts = (s.parts && s.parts.length) ? s.parts.filter(function (p) { return !p.ignore; }) : [{ trip: t.trip, pallets: s.pallets }];
         var done = parts.every(function (p) { if (p.unnamed) return /^UNLOADED$/i.test(p.ustatus); var o = byTrip[p.trip.toUpperCase()]; return o && o.unloaded; });
         var sumP = parts.reduce(function (q, p) { return q + (p.pallets || 0); }, 0);
@@ -4148,7 +4155,7 @@ window.YQ_TASKS = (function () {
         out.push({ s: s, parts: parts, total: s.total || parts.reduce(function (a, p) { return a + (p.pallets || 0); }, 0) });
       });
     });
-    return out.sort(function (a, b) { return a.s.ready - b.s.ready; });
+    return out.sort(function (a, b) { return readyKey(a.s) - readyKey(b.s); });
   }
 
   /* "Done" tab: unloaded trailers (what became of each load) and loads already loaded into delivery. */
@@ -4322,7 +4329,7 @@ window.YQ_TASKS = (function () {
   function renderShip(all, now) {
     var inTerm = function (trip) { return state.term === 'all' || termOf({ trip: trip || '' }) === state.term; };
     var list = shipList(all, now).filter(function (x) { return inTerm(x.parts[0] && x.parts[0].trip); });
-    var urgent = list.filter(function (x) { return x.s.ready - now < 3 * 3600000; });
+    var urgent = list.filter(function (x) { return x.s.ready !== null && x.s.ready - now < 3 * 3600000; });
     var seenArr = seenSet(), seenMap = {};
     seenArr.forEach(function (p) { seenMap[p] = 1; });
     var fresh = list.filter(function (x) { return !seenMap[x.s.pro]; });
@@ -4377,7 +4384,7 @@ window.YQ_TASKS = (function () {
     var groups = {}, order = [];
     list.forEach(function (x, i) { var r = root(i); if (!groups[r]) { groups[r] = []; order.push(r); } groups[r].push(x); });
     order.forEach(function (r) {
-      var grp = groups[r].sort(function (p, q) { return p.s.ready - q.s.ready; }), x = grp[0];
+      var grp = groups[r].sort(function (p, q) { return readyKey(p.s) - readyKey(q.s); }), x = grp[0];
       /* the rest of the same delivery run (merged cells on the board) that is not in the list by itself yet
          (no PENDING/LOADING, no deadline): it joins the card — loading, «Loaded» and the pallet count cover the whole run */
       var inG0 = {}; grp.forEach(function (m) { inG0[m.s.pro] = 1; });
@@ -4387,7 +4394,7 @@ window.YQ_TASKS = (function () {
         var ps = (o.parts && o.parts.length ? o.parts.filter(function (q) { return !q.ignore; }) : []);
         grp.push({ s: o, parts: ps.length ? ps : [{ trip: '', pallets: o.pallets, storage: o.storage }], total: o.total || o.pallets || 0, why: 'run' });
       }); });
-      var s = x.s, diff = s.ready - now, staged = /^(PENDING|LOADING|IN LINE)$/i.test(s.status || '');
+      var s = x.s, diff = s.ready === null ? Infinity : s.ready - now, staged = /^(PENDING|LOADING|IN LINE)$/i.test(s.status || '');
       var li = el('li', 'card shipcard' + (diff < 0 ? ' late' : diff < 3 * 3600000 ? ' soon' : '') + (s.basis === 'ready' ? ' has-mbr' : ''));
       var top = el('div', 'c-top');
       var tl = el('span', 'sc-tags');
@@ -4405,9 +4412,10 @@ window.YQ_TASKS = (function () {
       var kv = el('div', 'kv');
       var row = function (k, v, cls) { if (v === null || v === undefined || v === '') return; var w = el('div', 'kvr' + (cls ? ' ' + cls : '')); w.appendChild(el('span', null, k)); w.appendChild(el('b', null, String(v))); kv.appendChild(w); };
       row(yqT('Куди'), s.to ? s.to + (s.miles !== null && s.miles !== undefined ? ' · ' + s.miles + ' mi' : '') : '');
-      if (s.basis === 'ready') row('⚑ Must be ready', fmtTime(s.ready), 'big mbr');
+      if (s.ready === null) row('SELL', yqT('приїде керієр — перевантажити'), 'big mbr');
+      else if (s.basis === 'ready') row('⚑ Must be ready', fmtTime(s.ready), 'big mbr');
       else { if (asapTxt(s)) row('⚑ Must be ready', asapTxt(s), 'big mbr'); row(yqT('Виїхати до'), fmtTime(s.ready), 'big' + (diff < 0 ? ' lateval' : diff < 3 * 3600000 ? ' soonval' : '')); }
-      var when = el('div', 'sc-when' + (diff < 0 ? ' late' : ''), (diff < 0 ? yqT('запізнення ') + rel(diff) : yqT('через ') + rel(diff)) + ' · ' + (s.basis === 'ready' ? yqT('за Must be ready') : yqT('за доставкою')));
+      var when = el('div', 'sc-when' + (diff < 0 ? ' late' : ''), s.ready === null ? yqT('SELL · часу на борді немає, керієр приїде') : (diff < 0 ? yqT('запізнення ') + rel(diff) : yqT('через ') + rel(diff)) + ' · ' + (s.basis === 'ready' ? yqT('за Must be ready') : yqT('за доставкою')));
       kv.appendChild(when);
       row(yqT('Доставка'), s.deliver ? (s.deliverApprox ? '~' : '') + fmtTime(s.deliver) : '');
       var stor = x.parts.map(function (p) { return p.storage || ''; }).filter(Boolean);
@@ -4508,7 +4516,7 @@ window.YQ_TASKS = (function () {
         if (s.unitInDeadline) out.push({ lvl: 'info', trip: t.trip, text: s.pro + yqT(': номер трейлера ') + s.unitOut + yqT(' стоїть у колонці Must be ready by, а не в Unit number'), where: w });
         if (s.deadlineRaw && !s.deadline && !s.unitInDeadline && !/HOT|ASAP|URGENT|NOW/i.test(s.deadlineRaw)) out.push({ lvl: 'amber', trip: t.trip, text: s.pro + ': Must be ready «' + s.deadlineRaw + yqT('» не вдалося прочитати як час'), where: w });
         if (s.badDeliver && !s.deadline) out.push({ lvl: 'amber', trip: t.trip, text: s.pro + yqT(': доставка ') + fmtTime(s.deliver) + yqT(' раніша за день завантаження ') + fmtDay(s.day) + yqT(' — стара дата?'), where: w });
-        if (!s.deliver && !s.deadline) out.push({ lvl: 'info', trip: t.trip, text: s.pro + yqT(': немає ні Must be ready, ні дати доставки, тому час не рахується'), where: w });
+        if (!s.deliver && !s.deadline && !isSell(s)) out.push({ lvl: 'info', trip: t.trip, text: s.pro + yqT(': немає ні Must be ready, ні дати доставки, тому час не рахується'), where: w });
       });
     });
     var rk = { red: 0, amber: 1, info: 2 };
@@ -5493,7 +5501,7 @@ window.YQ_TASKS = (function () {
   function toastSeen() { try { var v = localStorage.getItem(TOAST_KEY); return v === null ? null : +v; } catch (e) { return null; } }
   function setToastSeen(v) { state.toastSeenMem = v; try { localStorage.setItem(TOAST_KEY, String(v)); } catch (e) {} }
   var toastEl = null, toastTimer = null, toastShownFor = 0;
-  function kindOf(c) { if (c.kind === 'note') return noteParts(c.nt).same.length ? 'instr' : 'note'; if (c.kind === 'unit' || c.kind === 'st') return c.kind; return 'dl'; }
+  function kindOf(c) { if (c.kind === 'note') return noteParts(c.nt).same.length ? 'instr' : 'note'; if (c.kind === 'unit' || c.kind === 'st' || c.kind === 'bst') return c.kind; return 'dl'; }
   function tripsOf(all, pro, fallback) { var out = []; all.forEach(function (t) { if (t.ships.some(function (s) { return s.pro === pro; }) && out.indexOf(t.trip) < 0) out.push(t.trip); }); return out.length ? out : [fallback]; }
   function hideToast(markSeen) {
     if (toastEl) toastEl.hidden = true;
@@ -5543,7 +5551,7 @@ window.YQ_TASKS = (function () {
         l1.appendChild(el('span', 'old', dlLabel(c.ft, c.fr))); l1.appendChild(document.createTextNode(' → ')); l1.appendChild(el('b', null, dlLabel(c.tt, c.tr)));
         if (c.ft && c.tt) { var dd = c.tt - c.ft; l1.appendChild(el('span', dd < 0 ? 'tchg' : 'tchg later', ' · ' + (dd < 0 ? yqT('раніше на ') : yqT('пізніше на ')) + rel(dd))); }
         body.appendChild(l1);
-      } else if (kd === 'unit' || kd === 'st') body.appendChild(el('div', kd === 'st' ? 'pop-st' : null, chDetail(c)));
+      } else if (kd === 'unit' || kd === 'st' || kd === 'bst') body.appendChild(el('div', kd === 'st' || kd === 'bst' ? 'pop-st' : null, chDetail(c)));
       else body.appendChild(el('div', null, c.nt));
       var tr = el('div', 'pop-trips');
       tripsOf(all, c.pro, c.trip).forEach(function (tp) {
@@ -5588,7 +5596,7 @@ window.YQ_TASKS = (function () {
       row.appendChild(el('span', 'ttag ' + kd, chTag(kd)));
       var body = el('div');
       var l1 = el('div'); l1.appendChild(el('b', null, c.pro));
-      if (kd === 'unit' || kd === 'st') { l1.appendChild(document.createTextNode(' · ' + chDetail(c))); }
+      if (kd === 'unit' || kd === 'st' || kd === 'bst') { l1.appendChild(document.createTextNode(' · ' + chDetail(c))); }
       else if (kd === 'dl') { l1.appendChild(document.createTextNode(' · ')); l1.appendChild(el('span', 'tchg' + (c.ft && c.tt && c.tt > c.ft ? ' later' : ''), dlLabel(c.ft, c.fr) + ' → ' + dlLabel(c.tt, c.tr))); }
       else l1.appendChild(document.createTextNode(' · ' + c.nt));
       body.appendChild(l1);
@@ -5662,7 +5670,7 @@ window.YQ_TASKS = (function () {
       var w = el('div', 'what');
       w.appendChild(document.createTextNode(c.trip + ' · ' + chText(c) + '  '));
       if (c.kind === 'note') { w.appendChild(el('span', 'later', yqT('нова примітка'))); }
-      else if (c.kind === 'unit' || c.kind === 'st') { }
+      else if (c.kind === 'unit' || c.kind === 'st' || c.kind === 'bst') { }
       else if (c.ft && c.tt) {
         var d = c.tt - c.ft;
         w.appendChild(el('span', d < 0 ? 'earlier' : 'later', (d < 0 ? yqT('раніше на ') : yqT('пізніше на ')) + rel(d)));
@@ -5819,14 +5827,21 @@ window.YQ_TASKS = (function () {
         g.shipments.forEach(function (s) {
           var b0 = s.pro + '@' + g.day, k = Object.keys(rowsOf[b0] || {}).length > 1 ? b0 + '#' + s.row : b0, raw = normRaw(s.deadlineRaw), ts = s.deadline === undefined ? null : s.deadline, old = next[k];
           var note = normRaw(s.note);
-          if (!old) { next[k] = { r: raw, t: ts, n: note, trip: g.trip, day: g.day }; dirty = true; return; }
+          if (!old) { next[k] = { r: raw, t: ts, n: note, b: String(s.status || '').toUpperCase(), trip: g.trip, day: g.day }; dirty = true; return; }
           var same = old.r === raw || (old.t !== null && ts !== null && old.t === ts); /* same text on the board = same deadline, even if the date logic changed */
           if (!same) {
             fresh.push({ pro: s.pro, trip: g.trip, day: g.day, fr: old.r, ft: old.t, tr: raw, tt: ts, at: now });
-            old = next[k] = { r: raw, t: ts, n: old.n, trip: g.trip, day: g.day }; dirty = true;
+            old = next[k] = { r: raw, t: ts, n: old.n, b: old.b, trip: g.trip, day: g.day }; dirty = true;
           }
           /* A new or changed dispatcher note is logged too; the first time a load is seen with this field, just remember it. */
           /* Stored records come back frozen: write a new object instead of changing the old one. */
+          /* Column B became CH / NOK or SELL: dispatch flags a problem with the load — log it so the bell / toast shows it. */
+          var bst = String(s.status || '').toUpperCase();
+          if (old.b === undefined) { old = next[k] = Object.assign({}, old, { b: bst }); dirty = true; }
+          else if (old.b !== bst) {
+            if (/^(CH\/NOK|SELL)$/.test(bst)) fresh.push({ kind: 'bst', pro: s.pro, trip: g.trip, day: g.day, fr: old.b, tr: bst, at: now });
+            old = next[k] = Object.assign({}, old, { b: bst }); dirty = true;
+          }
           if (old.n === undefined) { old = next[k] = Object.assign({}, old, { n: note }); dirty = true; }
           else if (old.n !== note) {
             var npN = noteParts(note);
@@ -6097,6 +6112,7 @@ window.YQ_TASKS = (function () {
     var STAGED = /^(PENDING|IN LINE|LOADING)$/i;
     var outRows = [], outSeen = {};
     D.ship.forEach(function (x) { var s = x.s; if (s.deadline && s.ready <= D.end) { outSeen[s.pro] = 1; outRows.push({ s: s, parts: x.parts, total: x.total, why: 'mbr' }); } });
+    D.ship.forEach(function (x) { var s = x.s; if (!outSeen[s.pro] && isSell(s)) { outSeen[s.pro] = 1; outRows.push({ s: s, parts: x.parts, total: x.total, why: 'sell' }); } });
     build().forEach(function (t) { t.ships.forEach(function (s) {
       if (outSeen[s.pro] || isLoaded(s) || !STAGED.test(s.status || '')) return;
       outSeen[s.pro] = 1; outRows.push({ s: s, parts: (s.parts && s.parts.length ? s.parts.filter(function (p) { return !p.ignore; }) : [{ trip: t.trip, pallets: s.pallets, storage: s.storage }]), total: s.total || s.pallets, why: 'staged' });
@@ -6296,6 +6312,7 @@ window.YQ_TASKS = (function () {
       body: outRows.map(function (x) {
         var s = x.s, dl;
         if (s.deadline) dl = { content: 'Must be ready ' + fmtTime(s.ready) + (s.ready < now ? yqT('\nзапізнення ') + rel(now - s.ready) : ''), styles: { fontStyle: 'bold', textColor: s.ready < now ? RED : s.ready - now < 3 * 3600000 ? AMBER : INK } };
+        else if (isSell(s) && s.ready === null) dl = { content: yqT('SELL: приїде керієр'), styles: { fontStyle: 'bold' } };
         else dl = { content: s.ready !== null ? yqT('орієнт. виїхати до ') + fmtTime(s.ready) : yqT('немає'), styles: { textColor: MUTED } };
         return [{ content: s.pro, styles: { fontStyle: 'bold' } }, clip(s.customer, 26), clip(s.to, 30), String(x.total),
           s.status ? { content: String(s.status).toUpperCase(), styles: { fontStyle: 'bold', textColor: /LOADING/i.test(s.status) ? GREEN : INK } } : '—',
