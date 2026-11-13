@@ -1067,8 +1067,8 @@ button.tl-sep:hover b { text-decoration: underline; text-underline-offset: 3px; 
 .cpy { cursor: copy; position: relative; border-radius: 4px; }
 .cpy:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
 .cpy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.cpy-ok { color: var(--accent); }
-.cpy-tip { position: absolute; left: 50%; bottom: calc(100% + 4px); transform: translateX(-50%); white-space: nowrap; font: 600 11px/1.2 inherit; font-family: inherit; padding: 3px 7px; border-radius: 5px; background: var(--fg); color: var(--surface); pointer-events: none; z-index: 30; text-decoration: none; }
+.cpy-ok { animation: cpyblink .6s ease-out; }
+@keyframes cpyblink { 0% { background: color-mix(in srgb, var(--accent) 28%, transparent); } 100% { background: transparent; } }
 .ttag.st, .ttag.bst { background: var(--hot-bg); color: var(--hot); }
 .pop-st { color: var(--hot); font-weight: 600; }
 
@@ -3933,8 +3933,9 @@ window.YQ_TASKS = (function () {
     var go = function (ev) {
       ev.stopPropagation(); ev.preventDefault();
       copyNum(v).then(function () {
-        node.classList.add('cpy-ok'); var b = el('span', 'cpy-tip', yqT('Скопійовано ✓')); node.appendChild(b);
-        setTimeout(function () { node.classList.remove('cpy-ok'); b.remove(); }, 1100);
+        /* no message: the number just blinks once */
+        node.classList.remove('cpy-ok'); void node.offsetWidth; node.classList.add('cpy-ok');
+        setTimeout(function () { node.classList.remove('cpy-ok'); }, 600);
       });
     };
     node.addEventListener('click', go);
