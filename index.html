@@ -1850,7 +1850,7 @@ function parseBoard(XLSX, wb) {
             unitInDeadline: !str(r[2]) && typeof r[3] === 'number' && r[3] >= 10000,
             mode: str(r[20]).toUpperCase(),
             loadedBy: str(r[5]),
-            parts: [{ trip: g.trip, pallets: hu, storage: str(r[4]) }],
+            parts: [{ trip: g.trip, pallets: hu, storage: str(r[4]), own: str(r[4]) }],
             outGroup: outGrp[i] || ''
           };
           g.shipments.push(sh);
@@ -1870,7 +1870,7 @@ function parseBoard(XLSX, wb) {
           Object.keys(pr).forEach(function (k) { cp[k] = pr[k]; });
           cp.pallets = r[22];
           cp.part = true;
-          pr.parts.push({ trip: g.trip, pallets: r[22], storage: str(r[4]) || pr.storage });
+          pr.parts.push({ trip: g.trip, pallets: r[22], storage: str(r[4]) || pr.storage, own: str(r[4]) });
           cp.parts = pr.parts;
           g.shipments.push(cp);
         }
@@ -2261,7 +2261,29 @@ window.YQ_TASKS = (function () {
 
   function activeFor(trip) { trip = String(trip).toUpperCase(); return S.tasks.filter(function (t) { return t.trip === trip && (t.status === 'assigned' || t.status === 'started'); })[0] || null; }
   function doneFor(trip) { trip = String(trip).toUpperCase(); return S.tasks.filter(function (t) { return t.trip === trip && t.status === 'done'; }).sort(function (a, b) { return b.doneAt - a.doneAt; })[0] || null; }
-  function activeOfWorker(e) { return S.tasks.filter(function (t) { return (t.status === 'assigned' || t.status === 'started') && t.workers.indexOf(e) >= 0; })[0] || null; }
+  /* the trailer is already UNLOADED on every row of the board (finished by hand / by someone else) while its task is still open */
+  function boardFinished(t) {
+    if (!t || t.kind === 'ship' || !S.ctx || !S.ctx.all) return false;
+    var tr = String(t.trip || '').toUpperCase(), x = S.ctx.all.filter(function (y) { return String(y.trip).toUpperCase() === tr; })[0];
+    return !!(x && x.unloaded);
+  }
+  function activeOfWorker(e) { return S.tasks.filter(function (t) { return (t.status === 'assigned' || t.status === 'started') && t.workers.indexOf(e) >= 0 && !boardFinished(t); })[0] || null; }
+  /* close such tasks quietly; the script checks the board itself and writes nothing to it */
+  function closeBoardFinished() {
+    if (!S.me || S.off) return;
+    S.bdTried = S.bdTried || {};
+    S.tasks.forEach(function (t) {
+      if ((t.status !== 'assigned' && t.status !== 'started') || S.bdTried[t.id] || !boardFinished(t)) return;
+      if (!S.me.canManage && t.workers.indexOf(S.me.email) < 0) return;
+      S.bdTried[t.id] = 1;
+      call('boardDone', { id: t.id }, false).then(function (r) {
+        if (!r || !r.task) return;
+        var i = -1; S.tasks.forEach(function (x, k) { if (x.id === r.task.id) i = k; });
+        if (i >= 0) S.tasks[i] = r.task;
+        if (r.closed && S.ctx && S.ctx.rerender) S.ctx.rerender();
+      }).catch(function () { setTimeout(function () { delete S.bdTried[t.id]; }, 5 * 60000); });
+    });
+  }
   /* crews: A and B swap day/night every Monday; N is the permanent night crew, it works with whichever crew is on nights.
      Sunday (one shift) is worked by that week's night crew. anchor = a Monday and the crew on days that week. */
   var CREWS = { MKM: { anchor: [2026, 10, 2], day: 'B' } };
@@ -2590,7 +2612,7 @@ window.YQ_TASKS = (function () {
       quick.textContent = '';
       var st = [], seen = {};
       boxes.forEach(function (b) { var v = b.inp.value.trim().toUpperCase(); if (v && b.mode() === 'storage' && !seen[v]) { seen[v] = 1; st.push(v); } });
-      recentSt().forEach(function (v) { if (!seen[v]) { seen[v] = 1; st.push(v); } });
+      boardSt.concat(recentSt()).forEach(function (v) { if (!seen[v]) { seen[v] = 1; st.push(v); } });
       var inUse = {}; boxes.forEach(function (b) { var v = b.inp.value.trim().toUpperCase(); if (v && b.mode() === 'trailer') inUse[v] = 1; });
       var allE = emptyUnits().filter(function (u) { return !seen[u.toUpperCase()]; });
       var em = allE.filter(function (u) { return !inUse[u.toUpperCase()] && !plannedIn(u).length; });
@@ -2617,7 +2639,7 @@ window.YQ_TASKS = (function () {
     box.insertBefore(quick, list);
     var shipOf = {};
     if (S.ctx) S.ctx.all.filter(function (t) { return t.trip.toUpperCase() === task.trip; }).concat(S.ctx.all).forEach(function (t) { (t.ships || []).forEach(function (s) { if (s.pro && !shipOf[s.pro]) shipOf[s.pro] = s; }); });
-    var byPro = {};
+    var byPro = {}, boardSt = [];
     var addRow = function (x) {
       if (byPro[x.pro]) return byPro[x.pro];
       /* one compact row, the same as «Куди йдуть вантажі»: ✓ unloaded · PRO · storage ↔ trailer · number */
@@ -2634,7 +2656,9 @@ window.YQ_TASKS = (function () {
       if (s0 && STOP_W.test(s0.status || '')) { nm.appendChild(el('em', 'tk-warnst', s0.status)); r.classList.add('warn'); }
       info.appendChild(nm);
       r.appendChild(info);
-      var plan = (already ? { to: doneL[x.pro].to, n: doneL[x.pro].unit || doneL[x.pro].storage } : null) || x.plan || planOf(x.pro, task.trip) || (x.unit ? { to: 'trailer', n: x.unit } : null);
+      var plan = (already ? { to: doneL[x.pro].to, n: doneL[x.pro].unit || doneL[x.pro].storage } : null) || x.plan || planOf(x.pro, task.trip) || (x.unit ? { to: 'trailer', n: x.unit } : null) || (x.stor ? { to: 'storage', n: x.stor } : null);
+      /* both a delivery trailer (C) and a storage (E): it goes from the storage into the trailer, the storage is shown as a hint */
+      if (x.stor && plan && plan.to === 'trailer') nm.appendChild(el('em', 'tk-opt', storTxt(x.stor)));
       var ctl = el('div', 'tk-plan-c'), inp = el('input', 'tk-in'); inp.autocomplete = 'off';
       var bx = { pro: x.pro, locked: locked, cU: cU, inp: inp };
       var sync = function () {
@@ -2662,7 +2686,13 @@ window.YQ_TASKS = (function () {
     };
     /* the card already knows the loads: show them at once, then check against the board in the background */
     var own = S.ctx ? S.ctx.all.filter(function (t) { return t.trip.toUpperCase() === task.trip; })[0] : null;
-    ((own && own.ships) || []).forEach(function (s) { if (s.pro) addRow({ pro: String(s.pro).toUpperCase(), k: '', unit: s.unitOut || '' }); });
+    ((own && own.ships) || []).forEach(function (s) {
+      if (!s.pro) return;
+      /* column E: the storage typed on THIS trailer's row; a storage of another part of the same load is only offered as a chip */
+      var so = storOf(s, task.trip);
+      so.others.forEach(function (v) { if (boardSt.indexOf(v) < 0) boardSt.push(v); });
+      addRow({ pro: String(s.pro).toUpperCase(), k: '', unit: s.unitOut || '', stor: so.mine });
+    });
     if (boxes.length) { hint(); redrawQuick(); ok.disabled = false; } else sub.textContent = T('Завантажую вантажі з борди…');
     var chk = el('div', 'tk-chk', T('звіряю з бордою…')); box.insertBefore(chk, list);
     call('loads', { id: task.id }, true).then(function (r) {
@@ -2866,6 +2896,17 @@ window.YQ_TASKS = (function () {
     }); });
     return out;
   }
+  /* column E of a load: the storage typed on the row of trailer «trip» (mine), and storages of its other parts (others) */
+  function storOf(s, trip) {
+    var o = { mine: '', others: [] }; trip = String(trip || '').toUpperCase();
+    (s.parts || []).forEach(function (q) {
+      var v = String(q.own || '').trim(); if (!v || /SPRINT|INBOUND\s+SHIPMENTS/i.test(v) || v.length > 40) return;
+      if (String(q.trip || '').toUpperCase() === trip) { if (!o.mine) o.mine = v; }
+      else if (o.others.indexOf(v.toUpperCase()) < 0) o.others.push(v.toUpperCase());
+    });
+    return o;
+  }
+  function storTxt(v) { return (/^WH\b/i.test(v) ? T('склад ') : T('сторедж ')) + v; }
   /* the latest plan for a load from any trailer (a load split over several inbound trailers goes to one place) */
   function planOf(pro, notTrip) {
     var best = null;
@@ -2910,14 +2951,14 @@ window.YQ_TASKS = (function () {
     var seen = {}, L = (tr.ships || []).filter(function (s) { if (!s.pro || seen[s.pro]) return false; seen[s.pro] = 1; return true; });
     if (!L.length) return null;
     var cur = activeFor(tr.trip), had = (cur && cur.plan) || {};
-    var w = el('div', 'tk-plan'), rows = [], last = null;
+    var w = el('div', 'tk-plan'), rows = [], last = null, boardSt = [];
     var hd = el('div', 'tk-plan-h'); hd.appendChild(el('b', null, T('Куди йдуть вантажі'))); hd.appendChild(el('small', null, T('трейлер → C, сторедж → E'))); w.appendChild(hd);
     var chips = el('div', 'tk-plan-e');
     var drawChips = function () {
       chips.textContent = '';
       var st = [], seen2 = {};
       rows.forEach(function (x) { var v = x.inp.value.trim().toUpperCase(); if (v && x.sw.get() === 'storage' && !seen2[v]) { seen2[v] = 1; st.push(v); } });
-      recentSt().forEach(function (v) { if (!seen2[v]) { seen2[v] = 1; st.push(v); } });
+      boardSt.concat(recentSt()).forEach(function (v) { if (!seen2[v]) { seen2[v] = 1; st.push(v); } });
       /* a trailer that already got loads (here or in another plan) leaves «Порожні» and waits under «Вже в роботі» — it may take more */
       var inUse = {}; rows.forEach(function (x) { var v = x.inp.value.trim().toUpperCase(); if (v && x.sw.get() === 'trailer') inUse[v] = 1; });
       var all = emptyUnits().filter(function (u) { return !seen2[u.toUpperCase()]; });
@@ -2951,7 +2992,10 @@ window.YQ_TASKS = (function () {
       r.appendChild(info);
       /* own plan first; else where this load already goes from another of its inbound trailers; else column C */
       var other = had[s.pro] ? null : planOf(s.pro, String(tr.trip).toUpperCase());
-      var p0 = had[s.pro] || (other ? { to: other.to, n: other.n } : s.unitOut ? { to: 'trailer', n: s.unitOut } : { to: 'trailer', n: '' });
+      /* column E: a storage already typed on this trailer's row puts the switch on storage; other parts' storages become chips */
+      var so = storOf(s, tr.trip); so.others.forEach(function (v) { if (boardSt.indexOf(v) < 0) boardSt.push(v); });
+      var p0 = had[s.pro] || (other ? { to: other.to, n: other.n } : s.unitOut ? { to: 'trailer', n: s.unitOut } : so.mine ? { to: 'storage', n: so.mine } : { to: 'trailer', n: '' });
+      if (so.mine && p0.to === 'trailer') info.appendChild(el('em', 'tk-opt', storTxt(so.mine)));
       if (other) r.title = T('Вибрано так само, як у ') + other.trip;
       var inp = el('input', 'tk-in'); inp.value = p0.n; inp.disabled = stopped; inp.autocomplete = 'off';
       var rec;
@@ -3277,6 +3321,7 @@ window.YQ_TASKS = (function () {
     if (WORKER) return;
     S.ctx = ctx;
     try { publish(ctx); } catch (e) {}
+    try { closeBoardFinished(); } catch (e) {}
     if (!S.me && S.state === 'idle' && !S.off) { S.state = 'loading'; refresh(false).then(function () { if (S.state === 'loading') S.state = 'idle'; }); }
     var box = document.getElementById('tkBox');
     if (!box) { box = el('section', 'tkbox'); box.id = 'tkBox'; var ov = document.getElementById('ovBox'); ov.parentNode.insertBefore(box, ov); }
