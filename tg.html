@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="uk"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Yard Tasks</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@500;600&family=Fira+Sans+Condensed:wght@700&family=Fira+Sans:wght@400;500;600;700&display=swap">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+/* Yard Tasks mini app (Telegram): the worker's task — plan, «Почали», loads one by one, «Завершили». Colours of the Yard Queue page. */
+:root{--surface:rgba(255,255,255,.72);--surface-2:rgba(229,238,232,.86);--fg:#0f1d16;--muted:#55675d;--line:rgba(20,62,38,.13);--accent:#1d9a57;--accent-fg:#fff;--trip:#8e3fd6;
+ --hot:#c8372d;--hot-bg:#fbe5e1;--warn:#94570a;--warn-bg:#f8ecd3;--ok:#1d8a4b;--tr:#126b3b;--tr-bg:rgba(29,154,87,.13);--st:#6a4bc4;--st-bg:rgba(106,75,196,.12);--wh:#94570a;--wh-bg:rgba(240,190,90,.24);
+ --sheet:#f6faf7;--dim:rgba(15,29,22,.45);
+ --bgimg:radial-gradient(60% 50% at 4% 0%,rgba(120,214,160,.55),transparent 62%),radial-gradient(45% 40% at 96% 18%,rgba(29,154,87,.16),transparent 64%),radial-gradient(70% 50% at 70% 100%,rgba(170,214,186,.55),transparent 70%),linear-gradient(170deg,#f3f7f3,#e0e9e3 64%)}
+:root[data-theme="dark"]{--surface:rgba(26,38,31,.78);--surface-2:rgba(46,64,53,.85);--fg:#e3eee7;--muted:#97ab9f;--line:rgba(200,235,215,.12);--accent:#2fb36c;--trip:#c08cf5;
+ --hot:#ff7466;--hot-bg:rgba(255,116,102,.16);--warn:#f0b45a;--warn-bg:rgba(240,180,90,.16);--ok:#5fd38f;--tr:#7fe0a8;--tr-bg:rgba(47,179,108,.18);--st:#b9a6ff;--st-bg:rgba(150,125,255,.18);--wh:#f0b45a;--wh-bg:rgba(240,180,90,.18);
+ --sheet:#16211b;--dim:rgba(0,0,0,.55);
+ --bgimg:radial-gradient(60% 50% at 4% 0%,rgba(40,120,80,.45),transparent 62%),radial-gradient(70% 50% at 70% 100%,rgba(30,80,55,.45),transparent 70%),linear-gradient(170deg,#0f1813,#0b120e 64%)}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+html,body{min-height:100%}
+body{background:var(--bgimg);background-attachment:fixed;color:var(--fg);font:400 15px/1.35 "Fira Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{padding:14px 14px calc(110px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;max-width:560px;margin:0 auto}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 14px 12px}
+.trip{font:600 25px "Fira Code",ui-monospace,monospace;color:var(--trip);letter-spacing:.01em;word-break:break-all}
+.trip.sm{font-size:22px}
+.toprow{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.toprow small{color:var(--muted);font-size:13px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.chip{background:var(--surface-2);border-radius:999px;padding:4px 10px;font-size:13px;font-weight:500;font-variant-numeric:tabular-nums}
+.chip i{font-style:normal;color:var(--muted);font-weight:400;margin-right:4px}
+.mates{margin-top:10px;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.mates b{color:var(--fg);font-weight:600}
+.av{width:24px;height:24px;border-radius:50%;background:rgba(29,154,87,.16);color:var(--accent);display:inline-flex;align-items:center;justify-content:center;font:700 11px "Fira Sans",system-ui,sans-serif}
+.state{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:11px;border-top:1px dashed var(--line);font-size:14px;font-weight:600}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.state .time{margin-left:auto;color:var(--muted);font-weight:500;font-variant-numeric:tabular-nums}
+.prios{margin-top:10px;display:flex;flex-direction:column;gap:5px}
+.prio{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--hot)}
+.prio .pro{font:600 14px "Fira Code",monospace}
+.prio small{color:var(--muted);font-weight:500}
+.hint{color:var(--muted);font-size:13px;text-align:center;padding:16px 10px;line-height:1.45}
+.hint b{color:var(--fg)}
+.prog{display:flex;align-items:center;gap:10px;font:600 13px "Fira Sans",system-ui,sans-serif;color:var(--muted);padding:2px 2px 0;font-variant-numeric:tabular-nums}
+.bar{flex:1;height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .35s ease}
+.load{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:11px 12px;display:flex;align-items:center;gap:12px;width:100%;text-align:left;color:inherit;font:inherit;cursor:pointer;position:relative}
+.load:active{transform:scale(.99)}
+.load .pro{font:600 18px "Fira Code",monospace;letter-spacing:.01em}
+.load .pal{font-size:13px;color:var(--muted);margin-left:6px;font-weight:500}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.to{display:inline-flex;align-items:center;gap:6px;border-radius:8px;padding:4px 9px;font:600 13px "Fira Sans",system-ui,sans-serif}
+.to b{font:600 14px "Fira Code",monospace}
+.to.trailer{background:var(--tr-bg);color:var(--tr)} .to.storage{background:var(--st-bg);color:var(--st)} .to.wh{background:var(--wh-bg);color:var(--wh)} .to.none{background:var(--warn-bg);color:var(--warn)}
+.to.first{background:var(--hot-bg);color:var(--hot)}
+.load.prio{border-color:color-mix(in srgb,var(--hot) 45%,transparent)}
+.chk{margin-left:auto;width:42px;height:42px;border-radius:12px;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;flex:none;background:rgba(255,255,255,.12)}
+.load.done{background:color-mix(in srgb,var(--surface) 60%,transparent);cursor:default}
+.load.done .pro{color:var(--muted);text-decoration:line-through;text-decoration-thickness:1.5px}
+.load.done .chk{background:var(--accent);border-color:var(--accent)}
+.load .when{font-size:12px;color:var(--ok);font-weight:600;margin-top:5px}
+.load.off{opacity:.62;cursor:default}
+.load.off .chk{border-style:dashed}
+.load.busy .chk{border-color:var(--accent)}
+.load.busy .chk::after{content:"";width:18px;height:18px;border:2.5px solid var(--accent);border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.main{position:fixed;left:0;right:0;bottom:0;padding:12px 14px calc(14px + env(safe-area-inset-bottom));background:linear-gradient(to top,color-mix(in srgb,var(--sheet) 92%,transparent) 65%,transparent)}
+.mb{height:52px;border-radius:14px;background:var(--accent);color:#fff;border:0;width:100%;max-width:532px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:9px;font:700 17px "Fira Sans",system-ui,sans-serif;letter-spacing:.02em;cursor:pointer}
+.mb:disabled{opacity:.55}
+.mb.ghost{background:transparent;color:var(--accent);border:1.5px solid var(--accent);height:46px;font-size:15px;margin-top:8px}
+.dimmer{position:fixed;inset:0;background:var(--dim);opacity:0;pointer-events:none;transition:opacity .2s}
+.dimmer.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;background:var(--sheet);border-radius:22px 22px 0 0;padding:10px 16px calc(18px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .25s cubic-bezier(.2,.9,.3,1);max-height:85vh;overflow:auto}
+.sheet.on{transform:none}
+.grab{width:40px;height:5px;border-radius:9px;background:var(--line);margin:0 auto 12px}
+.sheet h3{font:700 20px "Fira Sans Condensed",sans-serif;letter-spacing:.01em}
+.sheet p{color:var(--muted);font-size:13px;margin:4px 0 12px}
+.srow{display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--line);font-size:14px}
+.srow .pro{font:600 15px "Fira Code",monospace}
+.srow .to{margin-left:auto;padding:3px 8px;border-radius:7px;font-size:12px}
+.ok{color:var(--ok);font-weight:700}
+.toast{position:fixed;left:14px;right:14px;top:calc(10px + env(safe-area-inset-top));background:var(--fg);color:var(--sheet);border-radius:12px;padding:11px 14px;font-size:14px;font-weight:500;transform:translateY(-150%);transition:transform .25s;z-index:5}
+.toast.on{transform:none}
+.toast.err{background:var(--hot);color:#fff}
+.empty{text-align:center;padding:60px 18px;color:var(--muted)}
+.empty .big{font-size:42px;margin-bottom:10px}
+.empty b{color:var(--fg)}
+.skel{height:120px;border-radius:16px;background:var(--surface);animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.5}}
+svg{display:block}
+</style></head>
+<body>
+<div class="wrap" id="app"><div class="skel"></div><div class="skel" style="height:70px"></div></div>
+<div class="main" id="mainBar" hidden></div>
+<div class="dimmer" id="dim"></div>
+<div class="sheet" id="sheet"></div>
+<div class="toast" id="toast"></div>
+<script>
+(function () {
+  var API = 'https://script.google.com/macros/s/AKfycbzBIJtmURkUVRyiP62YU251kXdFxC7huavlulKZIwslBKiE6wI-TKGamm8xFSjAV9P7/exec';
+  var tg = window.Telegram && Telegram.WebApp, initData = tg && tg.initData || '';
+  var S = { task: null, me: null, busy: '', err: '', loaded: false };
+  var $ = function (id) { return document.getElementById(id); };
+  var el = function (tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+  var svg = function (s) { var d = document.createElement('div'); d.innerHTML = s; return d.firstChild; };
+  var ICO_PLAY = '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5z" fill="#fff"/></svg>';
+  var ICO_OK = function (c, w) { return '<svg width="' + (w || 22) + '" height="' + (w || 22) + '" viewBox="0 0 22 22"><path d="M5 11.5l4 4 8-9" stroke="' + (c || '#fff') + '" stroke-width="2.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'; };
+  var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+  var hm = function (ms) { if (!ms) return ''; var d = new Date(ms); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+  var dur = function (ms) { var m = Math.max(0, Math.floor(ms / 60000)); return Math.floor(m / 60) + ':' + pad(m % 60); };
+  var haptic = function (k) { try { if (k === 'ok') tg.HapticFeedback.notificationOccurred('success'); else if (k === 'err') tg.HapticFeedback.notificationOccurred('error'); else tg.HapticFeedback.impactOccurred('light'); } catch (e) {} };
+
+  if (tg) {
+    try { tg.ready(); tg.expand(); } catch (e) {}
+    var th = function () { document.documentElement.setAttribute('data-theme', tg.colorScheme === 'dark' ? 'dark' : 'light'); try { tg.setHeaderColor(tg.colorScheme === 'dark' ? '#0f1813' : '#eaf2ec'); tg.setBackgroundColor(tg.colorScheme === 'dark' ? '#0b120e' : '#e6efe9'); } catch (e) {} };
+    th(); try { tg.onEvent('themeChanged', th); } catch (e) {}
+  }
+
+  var toastT = null;
+  function toast(msg, err) { var t = $('toast'); t.textContent = msg; t.className = 'toast on' + (err ? ' err' : ''); clearTimeout(toastT); toastT = setTimeout(function () { t.className = 'toast' + (err ? ' err' : ''); }, err ? 4200 : 2200); }
+
+  var ERR = {
+    tg_auth: 'Відкрий застосунок ще раз через бота.',
+    not_linked: 'Тебе ще не прив\'язано. Відкрий бота, натисни Start і вибери своє ім\'я.',
+    busy: 'Зараз хтось записує в борду — спробуй ще раз за мить.',
+    state: 'Завдання вже змінилось — оновлено.',
+    network: 'Немає зв\'язку. Перевір інтернет і спробуй ще.',
+    server: 'Помилка на сервері. Спробуй ще раз.'
+  };
+  function api(op, data) {
+    var body = Object.assign({ tgInit: initData, op: op }, data || {});
+    return fetch(API, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow' })
+      .then(function (r) { return r.json(); }, function () { throw { error: 'network' }; })
+      .then(function (r) { if (r && r.task !== undefined) S.task = r.task; if (r && r.me) S.me = r.me; if (!r || !r.ok) throw r || { error: 'network' }; return r; });
+  }
+  function errText(e) {
+    if (!e) return ERR.network;
+    if (e.error === 'no_plan') return 'Супервайзер ще не вказав, куди: ' + (e.detail || '') + '. Скажи йому.';
+    return ERR[e.error] || ('Не вдалося: ' + (e.error || '') + (e.detail ? ' (' + String(e.detail).slice(0, 80) + ')' : ''));
+  }
+
+  function toTag(l) {
+    if (!l.to) return el('span', 'to none', '⚠ план не вказано — скажи супервайзеру');
+    var wh = l.to === 'storage' && /^WH\b/i.test(l.n || ''), t = el('span', 'to ' + (l.to === 'storage' ? (wh ? 'wh' : 'storage') : 'trailer'));
+    if (wh) { t.textContent = '🏬 склад ' + l.n; return t; }
+    t.appendChild(document.createTextNode(l.to === 'storage' ? '📦 сторедж ' : '🚚 трейлер '));
+    t.appendChild(el('b', null, l.n));
+    return t;
+  }
+  function prioTxt(p) { return p ? (p.raw ? 'до ' + p.raw : p.man ? 'від супервайзера' : '') : ''; }
+
+  function render() {
+    var app = $('app'), bar = $('mainBar'); app.textContent = ''; bar.textContent = ''; bar.hidden = true;
+    if (!initData) {
+      var e0 = el('div', 'empty'); e0.appendChild(el('div', 'big', '🚛')); e0.appendChild(el('div', null, 'Відкрий цей застосунок з бота ')); e0.lastChild.appendChild(el('b', null, '@yardtasks_mkm_bot')); app.appendChild(e0); return;
+    }
+    if (!S.loaded) { app.appendChild(el('div', 'skel')); return; }
+    if (S.err) { var e1 = el('div', 'empty'); e1.appendChild(el('div', 'big', '🔗')); e1.appendChild(el('div', null, S.err)); app.appendChild(e1); return; }
+    var t = S.task;
+    if (!t) { var e2 = el('div', 'empty'); e2.appendChild(el('div', 'big', '☕')); e2.appendChild(el('div', null, (S.me ? S.me.name + ', з' : 'З') + 'араз завдань немає.')); e2.appendChild(el('div', null, 'Новий план прийде в чат.')); app.appendChild(e2); return; }
+
+    var card = el('div', 'card');
+    if (t.status === 'assigned') {
+      card.appendChild(el('div', 'trip', t.trip));
+      var ch = el('div', 'chips');
+      if (t.unit) { var c1 = el('span', 'chip'); c1.appendChild(el('i', null, 'Трейлер')); c1.appendChild(document.createTextNode(t.unit)); ch.appendChild(c1); }
+      if (t.loads || t.pallets) ch.appendChild(el('span', 'chip', (t.loads ? t.loads + ' ' + (t.loads === 1 ? 'вантаж' : t.loads < 5 ? 'вантажі' : 'вантажів') : '') + (t.pallets ? (t.loads ? ' · ' : '') + t.pallets + ' пал.' : '')));
+      if (ch.childNodes.length) card.appendChild(ch);
+      if (t.mates && t.mates.length) {
+        var m = el('div', 'mates'); t.mates.forEach(function (n) { m.appendChild(el('span', 'av', n.split(/\s+/).map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase())); });
+        m.appendChild(document.createTextNode('З тобою: ')); m.appendChild(el('b', null, t.mates.join(', '))); card.appendChild(m);
+      }
+      if (t.prio && t.prio.length) {
+        var pw = el('div', 'prios');
+        t.prio.forEach(function (p) { var r = el('div', 'prio'); r.appendChild(document.createTextNode('⚑ Першим:')); r.appendChild(el('span', 'pro', p.p)); var x = prioTxt(p); if (x) r.appendChild(el('small', null, x)); pw.appendChild(r); });
+        card.appendChild(pw);
+      }
+      var st = el('div', 'state'); st.appendChild(el('span', 'dot')); st.lastChild.style.background = '#3b7bd0'; st.appendChild(document.createTextNode('План')); st.appendChild(el('span', 'time', 'призначено ' + hm(t.assignedAt))); card.appendChild(st);
+      app.appendChild(card);
+      var h = el('div', 'hint'); h.appendChild(document.createTextNode('Список вантажів і куди кожен іде з\'явиться, коли натиснеш ')); h.appendChild(el('b', null, '«Почали»')); h.appendChild(document.createTextNode('.')); app.appendChild(h);
+      var go = el('button', 'mb'); go.appendChild(svg(ICO_PLAY)); go.appendChild(document.createTextNode(S.busy === 'start' ? 'ЗАПИСУЮ…' : 'ПОЧАЛИ')); go.disabled = !!S.busy;
+      go.onclick = function () {
+        if (S.busy) return; S.busy = 'start'; haptic(); render();
+        api('start', { id: t.id }).then(function () { S.busy = ''; haptic('ok'); toast('▶ Почали — записано в борду'); render(); }, function (e) { S.busy = ''; haptic('err'); toast(errText(e), true); render(); });
+      };
+      bar.appendChild(go); bar.hidden = false;
+      return;
+    }
+
+    var top = el('div', 'toprow'); top.appendChild(el('div', 'trip sm', t.trip)); if (t.unit) top.appendChild(el('small', null, 'трейлер ' + t.unit)); card.appendChild(top);
+    if (t.mates && t.mates.length) { var m2 = el('div', 'mates'); m2.appendChild(document.createTextNode('З тобою: ')); m2.appendChild(el('b', null, t.mates.join(', '))); card.appendChild(m2); }
+    var st2 = el('div', 'state'); st2.style.marginTop = '8px'; st2.style.paddingTop = '8px';
+    var dt = el('span', 'dot'); dt.style.background = t.status === 'done' ? 'var(--ok)' : '#e0a400'; st2.appendChild(dt);
+    st2.appendChild(document.createTextNode(t.status === 'done' ? 'Завершено' : 'Розвантажуєте'));
+    var tm = el('span', 'time', t.status === 'done' ? hm(t.startedAt) + ' → ' + hm(t.doneAt) : 'з ' + hm(t.startedAt) + ' · ' + dur(Date.now() - t.startedAt)); tm.id = 'elapsed'; st2.appendChild(tm);
+    card.appendChild(st2); app.appendChild(card);
+
+    var L = t.list || [], nd = L.filter(function (l) { return l.done; }).length, pd = 0, pa = 0;
+    L.forEach(function (l) { pa += l.pal || 0; if (l.done) pd += l.pal || 0; });
+    if (L.length) {
+      var pr = el('div', 'prog'); pr.appendChild(el('span', null, nd + ' / ' + L.length)); var b = el('div', 'bar'), bi = el('i'); bi.style.width = (L.length ? Math.round(nd * 100 / L.length) : 0) + '%'; b.appendChild(bi); pr.appendChild(b);
+      if (pa) pr.appendChild(el('span', null, pd + ' з ' + pa + ' пал.')); app.appendChild(pr);
+    } else app.appendChild(el('div', 'hint', 'Вантажів цього трейлера в борді не знайдено.'));
+
+    L.forEach(function (l) {
+      var row = el('button', 'load' + (l.done ? ' done' : '') + (!l.done && !l.to ? ' off' : '') + (l.prio && !l.done ? ' prio' : '') + (S.busy === l.p ? ' busy' : '')); row.type = 'button';
+      var info = el('div'), line = el('div'); line.appendChild(el('span', 'pro', l.p)); if (l.pal) line.appendChild(el('span', 'pal', l.pal + ' пал.')); info.appendChild(line);
+      if (l.done) {
+        var w = el('div', 'when'); w.textContent = '✓ ' + (l.doneAt ? hm(l.doneAt) + ' · ' : '') + (l.to === 'storage' ? (/^WH\b/i.test(l.n) ? 'склад ' + l.n : 'сторедж ' + l.n) : l.to ? 'трейлер ' + l.n : ''); info.appendChild(w);
+      } else {
+        var tags = el('div', 'tags');
+        if (l.prio) { var f = el('span', 'to first', '⚑ ПЕРШИМ'); var x2 = prioTxt(l.prio); if (x2) f.textContent += ' · ' + x2; tags.appendChild(f); }
+        tags.appendChild(toTag(l)); info.appendChild(tags);
+      }
+      row.appendChild(info);
+      var c = el('div', 'chk'); if (l.done) c.appendChild(svg(ICO_OK())); row.appendChild(c);
+      if (!l.done && t.status === 'started') row.onclick = function () {
+        if (S.busy) return;
+        if (!l.to) { haptic('err'); toast('Супервайзер ще не вказав, куди ' + l.p + '. Скажи йому.', true); return; }
+        S.busy = l.p; haptic(); render();
+        api('load', { id: t.id, pro: l.p }).then(function () { S.busy = ''; haptic('ok'); toast('☑ ' + l.p + ' — записано'); render(); }, function (e) { S.busy = ''; haptic('err'); toast(errText(e), true); render(); });
+      };
+      app.appendChild(row);
+    });
+
+    if (t.status === 'started') {
+      var fin = el('button', 'mb'); fin.appendChild(svg(ICO_OK('#fff', 18))); fin.appendChild(document.createTextNode(S.busy === 'done' ? 'ЗАПИСУЮ…' : 'ЗАВЕРШИЛИ ТРЕЙЛЕР')); fin.disabled = !!S.busy;
+      fin.onclick = function () { if (!S.busy) { haptic(); openConfirm(); } };
+      bar.appendChild(fin); bar.hidden = false;
+    }
+  }
+
+  function closeSheet() { $('sheet').className = 'sheet'; $('dim').className = 'dimmer'; }
+  $('dim').onclick = closeSheet;
+  function openConfirm() {
+    var t = S.task, sh = $('sheet'); sh.textContent = '';
+    var rest = (t.list || []).filter(function (l) { return !l.done; }), miss = rest.filter(function (l) { return !l.to; });
+    sh.appendChild(el('div', 'grab'));
+    sh.appendChild(el('h3', null, 'Завершити ' + t.trip + '?'));
+    if (miss.length) {
+      sh.appendChild(el('p', null, 'Не вказано, куди: ' + miss.map(function (l) { return l.p; }).join(', ') + '. Скажи супервайзеру — без цього трейлер не закрити.'));
+      var b0 = el('button', 'mb ghost', 'Зрозуміло'); b0.onclick = closeSheet; sh.appendChild(b0);
+    } else {
+      sh.appendChild(el('p', null, rest.length ? 'Решта вантажів запишеться в борду так, як у плані:' : 'Усі вантажі вже відмічені.'));
+      rest.forEach(function (l) { var r = el('div', 'srow'); r.appendChild(el('span', 'ok', '✓')); r.appendChild(el('span', 'pro', l.p)); var tg2 = toTag(l); r.appendChild(tg2); sh.appendChild(r); });
+      var yes = el('button', 'mb', 'ТАК, ЗАВЕРШИЛИ'); yes.style.marginTop = '14px';
+      yes.onclick = function () {
+        closeSheet(); S.busy = 'done'; render();
+        api('done', { id: t.id }).then(function () { S.busy = ''; haptic('ok'); toast('✓ Трейлер завершено — записано в борду'); render(); }, function (e) { S.busy = ''; haptic('err'); toast(errText(e), true); render(); });
+      };
+      var no = el('button', 'mb ghost', 'Ще ні'); no.onclick = closeSheet;
+      sh.appendChild(yes); sh.appendChild(no);
+    }
+    $('dim').className = 'dimmer on'; sh.className = 'sheet on';
+  }
+
+  function refresh() {
+    if (!initData || S.busy) return;
+    api('task').then(function () { S.loaded = true; S.err = ''; render(); }, function (e) { S.loaded = true; if (e && (e.error === 'not_linked' || e.error === 'tg_auth')) S.err = errText(e); else if (!S.task) S.err = errText(e); render(); });
+  }
+  render(); refresh();
+  setInterval(function () { var e = $('elapsed'); if (e && S.task && S.task.status === 'started') e.textContent = 'з ' + hm(S.task.startedAt) + ' · ' + dur(Date.now() - S.task.startedAt); }, 30000);
+  setInterval(refresh, 60000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(); });
+})();
+</script>
+</body></html>
