@@ -1716,7 +1716,9 @@ function parseBoard(XLSX, wb) {
       var sh = parseInt(r[1], 10) % 12, sm = r[2] ? parseInt(r[2], 10) : 0;
       if (r[3]) sh += r[3] === 'PM' ? 12 : 0;
       else { var c = sh + (r[6] === 'PM' ? 12 : 0); if (c * 60 + sm <= eh * 60 + em) sh = c; }
-      return { s: at(sh, sm), e: at(eh, em) };
+      /* a window over midnight («FRI 10PM-2AM»): the end is on the next day */
+      var ws0 = at(sh, sm), we0 = at(eh, em); if (we0 <= ws0) we0 += 86400000;
+      return { s: ws0, e: we0 };
     }
     r = s.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/);
     if (!r) {
@@ -1735,14 +1737,21 @@ function parseBoard(XLSX, wb) {
     var dm = s.match(/\b(MON|TUE|WED|THU|FRI|SAT|SUN)[A-Z]*\b/);
     if (!dm) return null;
     var h, m = 0, r = s.match(/(\d{1,2})(?::(\d{2}))?\s*(?:AM|PM)?\s*-\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/);
-    if (r) { h = parseInt(r[3], 10) % 12 + (r[5] === 'PM' ? 12 : 0); m = r[4] ? parseInt(r[4], 10) : 0; }
+    var over = 0;
+    if (r) {
+      h = parseInt(r[3], 10) % 12 + (r[5] === 'PM' ? 12 : 0); m = r[4] ? parseInt(r[4], 10) : 0;
+      /* «10PM-2AM»: the window goes over midnight, so its end is on the next day */
+      var sh0 = parseInt(r[1], 10) % 12, sm0 = r[2] ? parseInt(r[2], 10) : 0;
+      if (/PM\s*-/.test(s)) sh0 += 12;
+      if (r[5] === 'AM' && sh0 * 60 + sm0 > h * 60 + m) over = 1;
+    }
     else {
       r = s.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/);
       if (!r) return null;
       h = parseInt(r[1], 10) % 12 + (r[3] === 'PM' ? 12 : 0); m = r[2] ? parseInt(r[2], 10) : 0;
     }
     var idx = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'].indexOf(dm[1]);
-    var d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + idx, h, m, 0, 0);
+    var d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + idx + over, h, m, 0, 0);
     return d.getTime();
   }
 
@@ -2337,7 +2346,7 @@ window.YQ_TASKS = (function () {
   function stTxt(t) { return t.status === 'started' ? T('почав ') + hm(t.startedAt) : T('призначено ') + hm(t.assignedAt); }
 
   /* line icons in the page's own style (stroke = text colour), instead of an emoji */
-  var ICO = {
+  var ICO = { flag: '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>',
     cancel: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
     print: '<path d="M7 9V3.5h10V9"/><rect x="3.5" y="9" width="17" height="8" rx="2"/><path d="M7 14h10v6.5H7z"/><path d="M17 12h.01"/>',
     add: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M19 8v6M16 11h6"/>',
@@ -2424,8 +2433,10 @@ window.YQ_TASKS = (function () {
     '.tk-as.tk-go:hover{background:color-mix(in srgb,var(--accent) 85%,#000)}',
     '.tk-noplan{margin-left:auto;font-style:normal;font-size:12px;font-weight:600;color:var(--warn);background:var(--warn-bg);border-radius:999px;padding:2px 9px}',
     '.tk-chip.tk-noplan-chip{background:var(--warn-bg);color:var(--warn);font-weight:600}',
-    '.tk-flag{flex:none;width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:15px;line-height:1;cursor:pointer;opacity:.55}',
-    '.tk-flag.on{opacity:1;color:var(--hot);background:var(--hot-bg);border-color:color-mix(in srgb,var(--hot) 45%,transparent)}',
+    '.tk-flag{flex:none;width:28px;height:28px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);color:var(--muted);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:background .15s,color .15s}',
+    '.tk-flag:hover{color:var(--fg)}',
+    '.tk-flag.on{color:var(--hot);background:var(--hot-bg);border-color:color-mix(in srgb,var(--hot) 40%,transparent)}',
+    '.tk-flag.on svg path:last-child{fill:currentColor}',
     '.tk-flag:disabled{visibility:hidden}',
     '.tk-plan-r.prio .tk-plan-i b{color:var(--hot)}',
     '.tk-as.tk-part{font-size:12px;padding:3px 9px 3px 7px;min-height:26px;gap:4px;font-variant-numeric:tabular-nums}',
@@ -2542,10 +2553,10 @@ window.YQ_TASKS = (function () {
     '.tk-foot-l,.tk-foot-r{display:flex;gap:8px;align-items:center}.tk-foot .tk-btn{min-height:38px;padding:7px 14px;font-size:13.5px}',
     '.tk-col-r .tk-plan{border-top:0;padding-top:0;margin-top:0}',
     '@keyframes tk-slide{0%{opacity:0;transform:translateX(-10px)}100%{opacity:1;transform:none}}',
-    '.tk-plan-c{display:flex;align-items:center;gap:6px}.tk-plan-c .tk-in{width:92px}',
-    '.tk-col-r .tk-plan-i{flex-wrap:nowrap;white-space:nowrap}.tk-col-r .tk-plan-h small{display:none}',
+    '.tk-plan-c{display:flex;align-items:center;gap:5px}.tk-plan-c .tk-in{width:84px}',
+    '.tk-col-r .tk-plan-i{white-space:nowrap}.tk-col-r .tk-plan-h small{display:none}',
     '.tk-plan-r{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:3px 0;border-bottom:1px dashed var(--line)}',
-    '.tk-plan-i{display:flex;flex-wrap:wrap;align-items:center;gap:5px;font-size:12px;color:var(--muted);min-width:0}.tk-plan-i b{font:600 12.5px var(--font-mono,monospace);color:var(--fg)}',
+    '.tk-plan-i{display:flex;flex-wrap:wrap;align-items:center;gap:2px 5px;font-size:12px;color:var(--muted);min-width:0;overflow:hidden}.tk-plan-i span{white-space:nowrap}.tk-plan-i b{font:600 12.5px var(--font-mono,monospace);color:var(--fg)}',
     '.tk-plan-r .tk-in{padding:4px 8px;font-size:12.5px;font-family:var(--font-mono,monospace)}',
     '.tk-pos{font:700 10.5px var(--font-body);border-radius:5px;padding:1px 5px;color:#fff;background:#6b7280}.tk-pos.nose{background:#3b6fd8}.tk-pos.tail{background:#c2410c}',
     '.tk-plan-n{font-size:11px;color:var(--muted)}',
@@ -2867,7 +2878,7 @@ window.YQ_TASKS = (function () {
       if (!tr.ship && cur.status === 'started') stRow.appendChild(fb);
       if (stRow.childNodes.length) popEl.appendChild(stRow);
       var rm = el('button', 'tk-btn danger', T('Зняти')); rm.type = 'button';
-      rm.addEventListener('click', function () { rm.disabled = true; act('cancel', { id: cur.id }).then(function () { closePick(); if (S.ctx) S.ctx.rerender(); }, function (e) { rm.disabled = false; msg.textContent = errText(e); msg.hidden = false; }); });
+      rm.addEventListener('click', function () { rm.disabled = true; forgetPlan(cur); act('cancel', { id: cur.id }).then(function () { closePick(); if (S.ctx) S.ctx.rerender(); }, function (e) { rm.disabled = false; msg.textContent = errText(e); msg.hidden = false; }); });
       /* «Зняти» lives on the card now (next to the other buttons), not in this window */
     }
     var cancel = el('button', 'tk-btn', T('Скасувати')); cancel.type = 'button'; cancel.addEventListener('click', closePick); row.appendChild(cancel);
@@ -2923,14 +2934,28 @@ window.YQ_TASKS = (function () {
   }
   function storTxt(v) { return (/^WH\b/i.test(v) ? T('склад ') : T('сторедж ')) + v; }
   /* the latest plan for a load from any trailer (a load split over several inbound trailers goes to one place) */
+  function forgetPlan(task) { if (!task || !S.planLocal) return; var tr = String(task.trip).toUpperCase(); Object.keys(S.planLocal).forEach(function (k) { if (S.planLocal[k].trip === tr) delete S.planLocal[k]; }); }
+  /* is this place still on the board for the load (C, or E of any of its rows)? */
+  function onBoard(pro, n) {
+    var N = String(n || '').trim().toUpperCase(), hit = false; if (!N || !S.ctx) return false;
+    S.ctx.all.forEach(function (t) { (t.ships || []).forEach(function (s) {
+      if (hit || String(s.pro).toUpperCase() !== pro) return;
+      if (String(s.unitOut || '').trim().toUpperCase() === N) hit = true;
+      (s.parts || []).forEach(function (q) { if (String(q.own || '').trim().toUpperCase() === N) hit = true; });
+    }); });
+    return hit;
+  }
   function planOf(pro, notTrip) {
     var best = null;
     S.tasks.forEach(function (t) {
       if (t.status === 'cancelled' || !t.plan || !t.plan[pro] || (notTrip && t.trip === notTrip)) return;
+      /* a finished trailer's plan counts only while the board still shows it (cleared there = not a hint any more) */
+      if (!(t.status === 'assigned' || t.status === 'started') && !onBoard(pro, t.plan[pro].n)) return;
       var at = t.assignedAt || 0;
       if (!best || at > best.at) best = { to: t.plan[pro].to, n: t.plan[pro].n, trip: t.trip, at: at };
     });
     var l = S.planLocal && S.planLocal[pro];
+    if (l && !S.tasks.some(function (t) { return String(t.trip).toUpperCase() === l.trip && (t.status === 'assigned' || t.status === 'started'); })) l = null;
     if (l && (!notTrip || l.trip !== notTrip) && (!best || l.at >= best.at)) best = l;
     return best;
   }
@@ -3046,8 +3071,8 @@ window.YQ_TASKS = (function () {
       /* ⚑ «first»: on by itself for the board's Must be ready / ASAP / HOT; the supervisor can add or take it off */
       var ap = autoPrio(s), hp = hadPr[s.pro], fl = el('button', 'tk-flag'); fl.type = 'button';
       var fOn = hp ? !hp.off : !!ap;
-      var fSync = function () { fl.classList.toggle('on', fOn); fl.textContent = '⚑'; fl.title = fOn ? T('Першим') + (ap && ap.raw ? ' · ' + ap.raw : '') + T(' — натисніть, щоб зняти') : T('Позначити: робити першим'); fl.setAttribute('aria-pressed', fOn ? 'true' : 'false'); r.classList.toggle('prio', fOn); };
-      fl.addEventListener('click', function () { fOn = !fOn; fSync(); });
+      var fSync = function () { fl.classList.toggle('on', fOn); fl.title = fOn ? T('Першим') + (ap && ap.raw ? ' · ' + ap.raw : '') + T(' — натисніть, щоб зняти') : T('Позначити: робити першим'); fl.setAttribute('aria-pressed', fOn ? 'true' : 'false'); r.classList.toggle('prio', fOn); };
+      fl.appendChild(ico('flag')); fl.addEventListener('click', function () { fOn = !fOn; fSync(); });
       if (stopped) fl.disabled = true;
       fSync(); ctl.insertBefore(fl, ctl.firstChild);
       r.appendChild(ctl); w.appendChild(r);
@@ -3228,7 +3253,7 @@ window.YQ_TASKS = (function () {
       no.addEventListener('click', function (e2) { e2.stopPropagation(); clearTimeout(tm); shut(); });
       yes.addEventListener('click', function (e2) {
         e2.stopPropagation(); clearTimeout(tm); yes.disabled = no.disabled = true; yes.textContent = '…';
-        act('cancel', { id: task.id }).then(function () { if (S.ctx) S.ctx.rerender(); }, function () { shut(); if (S.ctx) S.ctx.rerender(); });
+        forgetPlan(task); act('cancel', { id: task.id }).then(function () { if (S.ctx) S.ctx.rerender(); }, function () { shut(); if (S.ctx) S.ctx.rerender(); });
       });
       ask.addEventListener('click', function (e2) { e2.stopPropagation(); });
     });
