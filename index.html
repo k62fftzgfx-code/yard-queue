@@ -2961,7 +2961,7 @@ window.YQ_TASKS = (function () {
   }
   function posTxt(note) {
     var p = '';
-    String(note || '').split(' · ').forEach(function (seg) { var t = seg.trim(); if (/^(NOSE|NOISE)$/i.test(t)) p = 'NOSE'; else if (/^TAIL$/i.test(t)) p = 'TAIL'; else if (/^MIDDLE$/i.test(t)) p = 'MIDDLE'; });
+    String(note || '').split(' · ').forEach(function (seg) { var t = seg.trim(); if (/\b(NOSE|NOISE)\b/i.test(t)) p = 'NOSE'; else if (/\bTAIL\b/i.test(t)) p = 'TAIL'; else if (/\bMIDDLE\b/i.test(t)) p = 'MIDDLE'; });
     return p;
   }
   /* outbound: the trailer the loads go into, picked from the empties like in the load plan */
@@ -3216,7 +3216,7 @@ window.YQ_TASKS = (function () {
     var rowsH = items.map(function (x, i) {
       var s = x.s, pos = posTxt(s.note || s.pos);
       var when = s.basis === 'ready' ? 'MBR ' + fmt.time(s.ready) : s.deliver ? T('Дост. ') + fmt.time(s.deliver) : '';
-      var extra = String(s.note || '').split(' · ').filter(function (t) { return t && !/^(NOSE|NOISE|TAIL|MIDDLE)$/i.test(t.trim()); }).join(' · ');
+      var extra = String(s.note || '').split(' · ').map(function (t) { return t.replace(/\b(NOSE|NOISE|TAIL|MIDDLE)\b/ig, ' ').replace(/\s+/g, ' ').trim(); }).filter(function (t) { return t; }).join(' · ');
       return '<tr><td class="n">' + (i + 1) + '</td><td><b>' + esc(s.pro) + '</b><div class="sm">' + esc(s.customer || '') + '</div></td>' +
         '<td class="c">' + esc(x.total) + '</td><td>' + esc(whereNow(x, fmt)) + '</td>' +
         '<td class="c">' + (pos ? '<span class="pos">' + pos + '</span>' : '') + '</td>' +
@@ -3748,6 +3748,12 @@ window.YQ_TASKS = (function () {
       if (/^(NOSE|NOISE)$/i.test(t)) out.pos = 'NOSE';
       else if (/^TAIL$/i.test(t)) out.pos = 'TAIL';
       else if (/^MIDDLE$/i.test(t)) out.pos = 'MIDDLE';
+      else if (/\b(NOSE|NOISE|TAIL|MIDDLE)\b/i.test(t)) {
+        /* the position written inside a longer note («ONLY OCONOMOWOC, WI NOSE»): take it out, keep the rest as a note */
+        var w = t.match(/\b(NOSE|NOISE|TAIL|MIDDLE)\b/i)[1].toUpperCase(); out.pos = w === 'NOISE' ? 'NOSE' : w;
+        t = t.replace(/\b(NOSE|NOISE|TAIL|MIDDLE)\b/ig, ' ').replace(/\s+/g, ' ').trim(); if (!t) return;
+        if (/\bSAME\b.*\b(SEAL|TRL|TRLR|TRAILER)\b/i.test(t)) out.same.push(t); else out.other.push(t);
+      }
       else if (/\bSAME\b.*\b(SEAL|TRL|TRLR|TRAILER)\b/i.test(t)) out.same.push(t);
       else out.other.push(t);
     });
@@ -3957,12 +3963,23 @@ window.YQ_TASKS = (function () {
       if (s.missing) out.push({ lvl: 'amber', text: s.pro + yqT(': на борді ') + s.found + yqT(' з ') + s.total + yqT(' пал., не вистачає ') + s.missing });
       if (s.excess) out.push({ lvl: 'amber', text: s.pro + yqT(': на борді ') + s.found + yqT(' пал. при Total ') + s.total + yqT(', забагато на ') + s.excess });
     });
-    var seenW = {};
+    /* parts still on the road: one short line (the details are in the loads list);
+       a part already on the yard, not unloaded: its own line — those trailers are worth unloading together */
+    var seenW = {}, nW = 0, lastW = 0, unk = false, yardP = {};
     t.ships.forEach(function (s) {
-      if (s.loaded || !s.waiting || !s.waiting.length || seenW[s.pro]) return;
-      seenW[s.pro] = 1;
-      out.push({ lvl: 'info', text: s.pro + yqT(' чекає частину: ') + s.waiting.map(function (o) { return o.trip + ' (' + o.pallets + yqT(' пал., ') + o.state + ')'; }).join('; ') });
+      if (s.loaded || seenW[s.pro]) return; seenW[s.pro] = 1;
+      if (s.waiting && s.waiting.length) {
+        nW++;
+        s.waiting.forEach(function (o) { var e = o.t && (o.t.etaEnd || o.t.etaStart); if (e) lastW = Math.max(lastW, e); else unk = true; });
+      }
+      (s.others || []).forEach(function (o) {
+        if (o.state === yqT('на ярді') || o.state === yqT('розвантажується')) (yardP[o.trip] = yardP[o.trip] || []).push(s.pro);
+      });
     });
+    Object.keys(yardP).forEach(function (tr) {
+      out.push({ lvl: 'amber', text: yqT('Частина ') + yardP[tr].join(', ') + yqT(' вже на ярді в ') + tr + yqT(' — краще розвантажити разом') });
+    });
+    if (nW) out.push({ lvl: 'info', text: '◷ ' + nW + ' ' + (nW === 1 ? yqT('вантаж чекає частину') : yqT('вантажі чекають частин')) + yqT(' з інших трейлерів') + (lastW ? yqT(' · найпізніше ') + fmtTime(lastW) : '') + (unk ? yqT(' · у деяких ETA не вказано') : '') });
     return out;
   }
 
@@ -4174,6 +4191,11 @@ window.YQ_TASKS = (function () {
     if (s.hot) nm.appendChild(el('span', 'hotpill', 'HOT'));
     if (s.customer) nm.appendChild(el('span', 'cust', ' · ' + s.customer));
     r.appendChild(nm);
+    /* the other parts of this load: where they are now (moved here from the tile) */
+    (s.others || []).forEach(function (o) {
+      if (o.state === yqT('розвантажено')) return;
+      r.appendChild(el('div', 'c-ft c-part', yqT('ще ') + o.pallets + yqT(' пал. у ') + o.trip + ' · ' + o.state));
+    });
     var ic = instrChips(s.note); if (ic) r.appendChild(ic);
     var pb = partnersBlock(s); if (pb) r.appendChild(pb);
     var kv = el('div', 'kv');
