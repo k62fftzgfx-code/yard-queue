@@ -1755,19 +1755,47 @@ function parseBoard(XLSX, wb) {
     return d.getTime();
   }
 
+  /* old column layout (sheet 47 and earlier), by 0-based index: the names in the header row */
+  var BOARD_OLD = { 1: 'STATUS', 3: 'MUST BE READY BY', 4: 'STORAGE', 6: 'ASSIGNED DRIVER', 7: 'TRIP #', 8: 'ARRIVED IN UNIT', 9: 'UNIT ETA / DERAMP', 10: 'UNIT STATUS', 11: 'PRO#',
+    12: 'WEEK', 13: 'LOAD#', 14: 'CUSTOMER', 17: 'ORIGIN', 20: 'MODE', 24: 'STOWABILITY', 25: 'COMMODITY', 26: 'COMMERCIAL REP', 27: 'NOTES', 28: 'LOADED STATUS', 29: 'REASON FOR LATE LOADING' };
+  /* null: the sheet already has the old layout; otherwise map[oldIndex] = index in this sheet (-1: none) */
+  function boardColMap(rows) {
+    var H = null;
+    for (var i = 0; i < Math.min(rows.length, 20); i++) {
+      var r = rows[i] || []; if (r.some(function (v) { return String(v == null ? '' : v).trim().toUpperCase() === 'PRO#'; })) { H = r.map(function (v) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().toUpperCase(); }); break; }
+    }
+    if (!H || H[11] === 'PRO#') return null;
+    var d = H.indexOf('PRO#') - 11, map = [];
+    for (var k = 0; k <= 30; k++) {
+      if (k <= 5) { map[k] = k; continue; }
+      if (k === 30) { var lb = H.indexOf('LOADED BY', 6); map[k] = lb; continue; }
+      var nmK = BOARD_OLD[k], at = nmK ? H.indexOf(nmK, 6) : -1;
+      map[k] = at >= 0 ? at : k + d;
+    }
+    return map;
+  }
+
   wb.SheetNames.forEach(function (name) {
     if (!/^\d+\s*\(/.test(name)) return;
     var rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null, blankrows: true });
+    /* columns are found by the header row («PRO#», «Trip #» …): from sheet 48 a «Loaded by» column sits in G and the rest moved right.
+       Each sheet is brought back to the old layout (H trip, K unit status, L PRO, AE loaded by), so the parsing below stays the same. */
+    var cmap = boardColMap(rows), sMerges = wb.Sheets[name]['!merges'] || [];
+    if (cmap) {
+      rows = rows.map(function (r) { if (!r) return r; var o = []; for (var k = 0; k < cmap.length; k++) o[k] = cmap[k] < 0 ? null : (r[cmap[k]] === undefined ? null : r[cmap[k]]); return o; });
+      var inv = {}; cmap.forEach(function (nc, oc) { if (nc >= 0 && inv[nc] === undefined) inv[nc] = oc; });
+      sMerges = sMerges.map(function (m) { var a = inv[m.s.c], b = inv[m.e.c]; if (a === undefined || b === undefined) return null; return { s: { r: m.s.r, c: Math.min(a, b) }, e: { r: m.e.r, c: Math.max(a, b) } }; }).filter(Boolean);
+    }
     /* Outbound groups: when Status / Must be ready / Assigned driver is merged over several loads (rows 215-219 holding a NOSE and a TAIL load),
        those loads leave together in one delivery trailer. One load spans two rows, so only merges over 3+ rows can join loads. */
     var outGrp = {};
-    (wb.Sheets[name]['!merges'] || []).forEach(function (m) {
+    sMerges.forEach(function (m) {
       if (m.e.r - m.s.r < 2 || [1, 3, 6].indexOf(m.s.c) < 0) return;
       for (var rr = m.s.r; rr <= m.e.r; rr++) if (!outGrp[rr]) outGrp[rr] = name + '!' + (m.s.r + 1);
     });
     /* Status, deadline, loaded-by and driver are merged over the rows of one load: copy the top cell down.
        Unit status (K) too: when it is merged over several loads of a trailer, each of their rows gets the one status. */
-    (wb.Sheets[name]['!merges'] || []).forEach(function (m) {
+    sMerges.forEach(function (m) {
       if (m.e.r <= m.s.r || [1, 2, 3, 4, 5, 6, 10].indexOf(m.s.c) < 0 || !rows[m.s.r]) return;
       for (var rr = m.s.r + 1; rr <= m.e.r; rr++) if (rows[rr]) rows[rr][m.s.c] = rows[m.s.r][m.s.c];
     });
@@ -2041,7 +2069,7 @@ window.claude = (function () {
         /* only the week sheets still in play (ended at most 7 days ago), columns A..AE: far less to download */
         var weeks = (meta.sheets || []).filter(function (sh) { return /^\d+\s*\(/.test(sh.properties.title) && weekFresh(sh.properties.title, 7); });
         if (!weeks.length) return { weeks: [], vals: { valueRanges: [] } };
-        var rng = weeks.map(function (sh) { return encodeURIComponent("'" + sh.properties.title.replace(/'/g, "''") + "'!A1:AE"); });
+        var rng = weeks.map(function (sh) { return encodeURIComponent("'" + sh.properties.title.replace(/'/g, "''") + "'!A1:AH"); });
         var q = rng.map(function (r) { return 'ranges=' + r; }).join('&');
         return Promise.all([
           sheetsGet(SHEETS + id + '/values:batchGet?' + q + '&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER&majorDimension=ROWS', t0),
